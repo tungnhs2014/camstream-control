@@ -1,0 +1,44 @@
+# Generated build output
+/output/
+/build/
+/cmake-build-*/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+
+# Compiled objects
+*.o
+*.a
+*.so
+*.ko
+
+# Generated images
+*.img
+*.sdcard
+
+# Runtime files
+*.pid
+*.sock
+*.log
+
+# Test output
+/test-results/
+/coverage/
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Python
+__pycache__/
+*.pyc
+
+# Operating system
+.DS_Store
+Thumbs.db
