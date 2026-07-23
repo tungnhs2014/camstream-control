@@ -1,0 +1,107 @@
+#!/bin/sh
+
+IFACE="wlan0"
+CONF="/etc/wpa_supplicant.conf"
+WPA_PID="/run/wpa_supplicant-${IFACE}.pid"
+DHCP_PID="/run/udhcpc-${IFACE}.pid"
+
+wait_for_interface()
+{
+    count=0
+
+    while [ "$count" -lt 15 ]; do
+        if [ -d "/sys/class/net/${IFACE}" ]; then
+            return 0
+        fi
+
+        sleep 1
+        count=$((count + 1))
+    done
+
+    return 1
+}
+
+start()
+{
+    printf "Starting Wi-Fi: "
+
+    if [ ! -r "$CONF" ]; then
+        echo "SKIP: $CONF not found"
+        return 0
+    fi
+
+    if ! wait_for_interface; then
+        echo "FAIL: $IFACE not found"
+        return 1
+    fi
+
+    mkdir -p /run/wpa_supplicant
+
+    ip link set "$IFACE" up || {
+        echo "FAIL: cannot enable $IFACE"
+        return 1
+    }
+
+    if [ ! -f "$WPA_PID" ]; then
+        wpa_supplicant \
+            -B \
+            -P "$WPA_PID" \
+            -D nl80211 \
+            -i "$IFACE" \
+            -c "$CONF" || {
+                echo "FAIL: wpa_supplicant"
+                return 1
+            }
+    fi
+
+    sleep 2
+
+    if [ ! -f "$DHCP_PID" ]; then
+        udhcpc \
+            -b \
+            -p "$DHCP_PID" \
+            -i "$IFACE" || {
+                echo "FAIL: DHCP"
+                return 1
+            }
+    fi
+
+    echo "OK"
+}
+
+stop()
+{
+    printf "Stopping Wi-Fi: "
+
+    if [ -f "$DHCP_PID" ]; then
+        kill "$(cat "$DHCP_PID")" 2>/dev/null || true
+        rm -f "$DHCP_PID"
+    fi
+
+    if [ -f "$WPA_PID" ]; then
+        kill "$(cat "$WPA_PID")" 2>/dev/null || true
+        rm -f "$WPA_PID"
+    fi
+
+    ip link set "$IFACE" down 2>/dev/null || true
+
+    echo "OK"
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        sleep 1
+        start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
