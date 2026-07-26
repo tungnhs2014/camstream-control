@@ -4,6 +4,5 @@ config BR2_PACKAGE_CAMSTREAM_VIDEO
 	help
 	  Build the CamStream synthetic V4L2 capture driver module.
 
-	  The current driver provides fixed YUYV format negotiation and an
-	  MMAP streaming lifecycle. Synthetic frame production is implemented
-	  by a later checkpoint.
+	  The current driver provides fixed YUYV format negotiation, an MMAP
+	  streaming lifecycle, and synthetic YUYV frame production.
