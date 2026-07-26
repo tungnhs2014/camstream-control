@@ -1,1 +1,2 @@
 source "$BR2_EXTERNAL_CAMSTREAM_PATH/package/camstream-capture/Config.in"
+source "$BR2_EXTERNAL_CAMSTREAM_PATH/package/camstream-video/Config.in"
