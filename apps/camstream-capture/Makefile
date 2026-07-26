@@ -1,10 +1,11 @@
 CXX ?= g++
 CPPFLAGS ?=
-CPPFLAGS += -Iinclude
 CXXFLAGS ?= -O2
-CXXFLAGS += -std=c++17 -Wall -Wextra -Wpedantic
 LDFLAGS ?=
 LDLIBS ?=
+
+CAMSTREAM_CPPFLAGS := -Iinclude
+CAMSTREAM_CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic
 
 TARGET := camstream-capture
 HEADERS := $(wildcard include/camstream/*.hpp)
@@ -18,7 +19,7 @@ SOURCES := \
 all: $(TARGET)
 
 $(TARGET): $(SOURCES) $(HEADERS)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) -o $@ $(SOURCES) $(LDLIBS)
+	$(CXX) $(CPPFLAGS) $(CAMSTREAM_CPPFLAGS) $(CXXFLAGS) $(CAMSTREAM_CXXFLAGS) $(LDFLAGS) -o $@ $(SOURCES) $(LDLIBS)
 
 clean:
 	$(RM) $(TARGET)

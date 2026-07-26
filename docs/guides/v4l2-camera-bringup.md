@@ -7,10 +7,10 @@ USB camera using the upstream Linux `uvcvideo` driver, V4L2 core and
 videobuf2, followed by userspace inspection and one real frame capture on a
 BeagleBone Black.
 
-Stage 6A proves the standard UVC/V4L2 reference path before any custom capture
-driver or native capture application is developed. It does not implement the
-later native application or custom V4L2 driver, select a production format,
-validate GStreamer, or claim long-term USB stability.
+Stage 6A proves the standard UVC/V4L2 reference path before the synthetic V4L2
+capture driver or native capture application is developed. It does not
+implement either later component, select a production format, validate
+GStreamer, or claim long-term USB stability.
 
 ## 2. Hardware and software prerequisites
 

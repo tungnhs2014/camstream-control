@@ -10,8 +10,9 @@ verified frame capture.
 
 This report covers the Stage 6A kernel configuration, Buildroot packages, build
 artifacts, runtime USB/V4L2 behavior, camera formats and controls, and one-frame
-capture. It does not cover a custom V4L2 driver, GStreamer integration,
-production streaming, concurrent service behavior, or long-term USB stability.
+capture. It does not cover the synthetic V4L2 capture driver, GStreamer
+integration, production streaming, concurrent service behavior, or long-term
+USB stability.
 
 ## 3. Provenance
 
@@ -257,4 +258,5 @@ controller. MJPEG advertises 1280×720 at 30 fps, compared with 10 fps for YUYV
 at that resolution. A real 640×480 MJPEG frame capture passed after
 initial frames were skipped.
 
-Long-term USB stability remains deferred. This conclusion does not authorize a custom V4L2 driver or claim stable production streaming.
+Long-term USB stability remains deferred. This conclusion does not validate
+the synthetic V4L2 capture driver or claim stable production streaming.

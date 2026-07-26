@@ -11,7 +11,7 @@ streaming, buffer ownership, robust frame accounting, and MJPEG/YUYV output.
 This report covers the Stage 6B application, its initial manual deployment,
 Buildroot package integration, and final packaged BBB/C270 execution. It does
 not cover GStreamer, image decoding or conversion, a service, or the Stage 6C
-custom driver.
+synthetic V4L2 capture driver.
 
 Current status is deliberately split:
 
@@ -76,8 +76,11 @@ The initial checkpoints used an ARM executable copied to `/tmp`. Final closure
 used the project package under
 `br2-external/package/camstream-capture/`, with
 `BR2_PACKAGE_CAMSTREAM_CAPTURE=y` retained in
-`br2-external/configs/beaglebone_defconfig`. The package builds repository
-source with `TARGET_CXX` and installs `/usr/bin/camstream-capture`.
+`br2-external/configs/beaglebone_defconfig`. The package invokes the
+application Makefile through `TARGET_MAKE_ENV` and `TARGET_CONFIGURE_OPTS`, so
+the target compiler and target build flags are propagated while the
+application retains its mandatory project flags. It installs
+`/usr/bin/camstream-capture`.
 
 The project owner manually validated a clean Buildroot rebuild, generated
 rootfs/image, flashed-image boot, and packaged BBB/C270 runtime. The final

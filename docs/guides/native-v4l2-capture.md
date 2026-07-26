@@ -9,10 +9,10 @@ handling, and single-frame file output without hiding those operations behind
 a multimedia framework.
 
 The application validates the upstream `uvcvideo` path with the Logitech C270
-and is intended to exercise the later Stage 6C synthetic V4L2 driver through
-the same userspace interface. It is not the final streaming product: it does
-not decode MJPEG, convert YUYV, run a GStreamer pipeline, or provide a daemon
-or control protocol.
+and is intended to exercise the later Stage 6C synthetic V4L2 capture driver
+through the same userspace interface. It is not the final streaming product:
+it does not decode MJPEG, convert YUYV, run a GStreamer pipeline, or provide a
+daemon or control protocol.
 
 ## 2. Source structure and ownership
 
@@ -196,9 +196,10 @@ br2-external/package/camstream-capture/
 ```
 
 `Config.in` requires C++ support. `camstream-capture.mk` takes source from
-`apps/camstream-capture`, builds it with Buildroot's `TARGET_CXX`, and installs
-the result as `/usr/bin/camstream-capture`. The saved project configuration
-retains `BR2_PACKAGE_CAMSTREAM_CAPTURE=y` in
+`apps/camstream-capture` and uses Buildroot's `TARGET_MAKE_ENV` and
+`TARGET_CONFIGURE_OPTS`, including `TARGET_CXX` and target build flags. It
+installs the result as `/usr/bin/camstream-capture`. The saved project
+configuration retains `BR2_PACKAGE_CAMSTREAM_CAPTURE=y` in
 `br2-external/configs/beaglebone_defconfig`.
 
 Buildroot source, project integration, and generated build output are distinct:

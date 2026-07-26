@@ -8,15 +8,34 @@ USB UVC camera.
 
 ## Architecture
 
-The production-facing reference path is:
+Target multimedia path:
 
 ```text
-Logitech C270 -> uvcvideo -> V4L2 -> camstream-capture -> GStreamer -> service
+Logitech C270
+  -> uvcvideo
+  -> V4L2
+  -> GStreamer
+  -> Network Streaming
 ```
 
-A later learning path will implement a virtual V4L2 capture driver and feed it
-through the same userspace layers. The custom driver will complement, not
-replace, the upstream `uvcvideo` reference path.
+Control path:
+
+```text
+IPC Client
+  -> Camera Service
+  -> controls GStreamer pipeline
+```
+
+Diagnostic path:
+
+```text
+V4L2 device
+  -> camstream-capture
+```
+
+The Stage 6C synthetic V4L2 capture driver will expose the same V4L2 interface
+and can be validated with `camstream-capture`. It will complement, not replace,
+the upstream `uvcvideo` reference path.
 
 ## Validated baseline
 
@@ -80,7 +99,7 @@ camera frames do not belong in this repository.
 | --- | --- |
 | Stage 6A — C270 and upstream `uvcvideo` | **COMPLETE** |
 | Stage 6B — native V4L2 capture application | **COMPLETE** |
-| Stage 6C — custom synthetic V4L2 driver | **NEXT** |
+| Stage 6C — synthetic V4L2 capture driver | **NEXT** |
 | Stage 7 — GStreamer integration | **PLANNED** |
 
 Stage 6 is not complete because Stage 6C remains pending. Each new layer must
