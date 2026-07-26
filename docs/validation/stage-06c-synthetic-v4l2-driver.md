@@ -6,18 +6,21 @@
 - Branch: `stage/06c-synthetic-v4l2-driver`
 - Stage 6C.1: **COMPLETE**
 - Stage 6C.2 source and build validation: **PASS**
-- Stage 6C.2 BeagleBone Black runtime: **PENDING — NOT TESTED**
+- Stage 6C.2 BeagleBone Black runtime: **PASS**
+- Stage 6C.2: **COMPLETE**
 - Stage 6C: **IN PROGRESS**
 
-This checkpoint introduces only the registration skeleton. It does not claim
-format negotiation, buffer allocation, streaming, frame generation, or
-compatibility with `camstream-capture` beyond future architectural intent.
+The completed checkpoints provide device registration and a deterministic
+single-planar format-negotiation contract. Buffer allocation, streaming, frame
+generation, and compatibility with the `camstream-capture` streaming path are
+not implemented yet.
 
 ## Implementation boundary
 
 The project-owned `camstream_video` module registers one dynamically numbered
-V4L2 capture node. It supports open, close, ioctl dispatch, and
-`VIDIOC_QUERYCAP`. The driver advertises `V4L2_CAP_VIDEO_CAPTURE`; it does not
+V4L2 capture node. It supports open, close, ioctl dispatch, `VIDIOC_QUERYCAP`,
+fixed-format enumeration and negotiation, and fixed capture-parameter
+negotiation. The driver advertises `V4L2_CAP_VIDEO_CAPTURE`; it does not
 advertise `V4L2_CAP_STREAMING`.
 
 The private device state owns the `v4l2_device`, allocated `video_device`, and
@@ -159,8 +162,8 @@ synthetic frame generation remained assigned to later checkpoints.
 - Kernel-doc validation: **PASS**
 - Linux 6.18.1 module build with `W=1`: **PASS**
 - Buildroot package rebuild: **PASS**
-- BeagleBone Black runtime: **PENDING — NOT TESTED**
-- Stage 6C.2: **IN PROGRESS**
+- BeagleBone Black runtime: **PASS**
+- Stage 6C.2: **COMPLETE**
 
 Stage 6C.2 adds only a deterministic single-planar format and frame-interval
 contract. It does not add a queue, exchange image data, or pace frames.
@@ -211,6 +214,59 @@ module with Linux 6.18.1 `vermagic` and a `videodev` dependency. Buildroot
 installed it under `/lib/modules/6.18.1/updates/` in the target tree. No full
 image rebuild was performed.
 
+### BeagleBone Black runtime evidence
+
+The synthetic node was dynamically assigned `/dev/video2` during this test.
+That node number is observed evidence for this session, not a fixed ABI.
+
+`VIDIOC_QUERYCAP` passed with `V4L2_CAP_VIDEO_CAPTURE` present and
+`V4L2_CAP_STREAMING` absent, matching the Stage 6C.2 implementation boundary.
+The runtime format results were:
+
+| Operation | Observed result |
+| --- | --- |
+| `VIDIOC_ENUM_FMT` | YUYV |
+| `VIDIOC_ENUM_FRAMESIZES` | Discrete 640x480 |
+| `VIDIOC_ENUM_FRAMEINTERVALS` | Discrete 30 fps |
+| `VIDIOC_G_FMT` width/height | 640x480 |
+| `VIDIOC_G_FMT` pixel format | YUYV |
+| `VIDIOC_G_FMT` field | None |
+| `VIDIOC_G_FMT` bytes per line | 1280 |
+| `VIDIOC_G_FMT` image size | 614400 bytes |
+| `VIDIOC_G_FMT` colorspace | sRGB |
+| `VIDIOC_S_FMT` 640x480 YUYV | **PASS** |
+| `VIDIOC_G_PARM` | 30 fps |
+
+A `VIDIOC_TRY_FMT` request for 1920x1080 YUYV was normalized to 640x480
+YUYV. A subsequent `VIDIOC_G_FMT` confirmed that TRY_FMT did not alter the
+active format. A `VIDIOC_S_PARM` request for 15 fps was normalized to the only
+supported rate, 30 fps.
+
+REQBUFS and MMAP streaming remained unsupported, as expected for Stage 6C.2.
+No streaming behavior or frame delivery is claimed.
+
+`rmmod camstream_video` succeeded and the synthetic node disappeared. The C270
+nodes `/dev/video0` and `/dev/video1` remained present. No kernel WARNING,
+Oops, or BUG was observed.
+
+USB reset events remain a known, deferred observation. This validation does
+not establish the synthetic V4L2 capture driver as their cause.
+
+### Stage 6C.2 acceptance
+
+| Requirement | Result |
+| --- | --- |
+| Source and build validation | **PASS** |
+| `VIDIOC_QUERYCAP` capability boundary | **PASS** |
+| Format, size, and interval enumeration | **PASS** |
+| `TRY_FMT`, `S_FMT`, and `G_FMT` | **PASS** |
+| `G_PARM` and `S_PARM` | **PASS** |
+| Clean unload and node removal | **PASS** |
+| C270 coexistence | **PASS** |
+| Kernel WARNING/Oops/BUG | **NONE OBSERVED** |
+
+Stage 6C.2 is **COMPLETE**. Stage 6C remains **IN PROGRESS**.
+
 ### BeagleBone Black validation commands
 
 Confirm the target `v4l2-ctl` syntax, load the module, and identify the node by
@@ -250,7 +306,7 @@ v4l2-ctl -d "$CAMSTREAM_NODE" \
 v4l2-ctl -d "$CAMSTREAM_NODE" --get-fmt-video
 
 v4l2-ctl -d "$CAMSTREAM_NODE" \
-    --try-fmt-video=width=1920,height=1080,pixelformat=MJPG
+    --try-fmt-video=width=1920,height=1080,pixelformat=YUYV
 v4l2-ctl -d "$CAMSTREAM_NODE" --get-fmt-video
 
 v4l2-ctl -d "$CAMSTREAM_NODE" --get-parm
@@ -262,9 +318,9 @@ rmmod camstream_video
 dmesg | tail -n 50
 ```
 
-Expected effective results are YUYV, 640x480, field none, 1280 bytes per line,
-614400-byte images, and 30 fps even after unsupported format or frame-rate
-requests. Runtime results remain **PENDING** until this is executed on the BBB.
+The observed effective results were YUYV, 640x480, field none, 1280 bytes per
+line, 614400-byte images, and 30 fps after unsupported size or frame-rate
+requests.
 
 The Stage 6B `camstream-capture` application currently requires
 `V4L2_CAP_STREAMING` at its capability gate. It is therefore not a Stage 6C.2
