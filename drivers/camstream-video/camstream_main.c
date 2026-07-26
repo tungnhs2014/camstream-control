@@ -206,6 +206,7 @@ static int __init camstream_video_init(void)
 	mutex_init(&device->lock);
 	INIT_LIST_HEAD(&device->queued_buffers);
 	spin_lock_init(&device->queued_lock);
+	camstream_frame_init(device);
 	camstream_fill_format(&device->active_format);
 	device->timeperframe.numerator = 1;
 	device->timeperframe.denominator = CAMSTREAM_FRAME_RATE;

@@ -8,16 +8,6 @@
 
 #include "camstream_video.h"
 
-/**
- * struct camstream_buffer - VB2 buffer with driver queue membership
- * @vb: V4L2/VB2-owned buffer; must be the first member
- * @list: Link used only while the buffer is owned by the driver
- */
-struct camstream_buffer {
-	struct vb2_v4l2_buffer vb;
-	struct list_head list;
-};
-
 static int camstream_queue_setup(struct vb2_queue *queue,
 				 unsigned int *num_buffers,
 				 unsigned int *num_planes,
@@ -47,7 +37,7 @@ static int camstream_buf_prepare(struct vb2_buffer *buffer)
 	if (vb2_plane_size(buffer, 0U) < device->active_format.sizeimage)
 		return -EINVAL;
 
-	/* Stage 6C.3 allocates buffers but intentionally produces no payload. */
+	/* Payload is set only after the producer has generated a valid frame. */
 	vb2_set_plane_payload(buffer, 0U, 0U);
 
 	return 0;
@@ -63,12 +53,17 @@ static void camstream_buf_queue(struct vb2_buffer *vb)
 	spin_lock_irqsave(&device->queued_lock, flags);
 	list_add_tail(&buffer->list, &device->queued_buffers);
 	spin_unlock_irqrestore(&device->queued_lock, flags);
+
+	camstream_frame_notify_buffer(device);
 }
 
 static int camstream_start_streaming(struct vb2_queue *queue,
 				     unsigned int count)
 {
-	/* Stage 6C.4 will start frame production; 6C.3 only changes state. */
+	struct camstream_video_device *device = vb2_get_drv_priv(queue);
+
+	camstream_frame_start(device);
+
 	return 0;
 }
 
@@ -77,13 +72,17 @@ static int camstream_start_streaming(struct vb2_queue *queue,
  * @queue: VB2 capture queue being stopped
  *
  * A buffer is removed from the protected driver list before ownership is
- * returned to VB2. The buffer is never accessed after vb2_buffer_done().
+ * returned to VB2. Producer work is disabled and synchronously drained before
+ * queued buffers are cancelled. A buffer is never accessed after
+ * vb2_buffer_done().
  */
 static void camstream_stop_streaming(struct vb2_queue *queue)
 {
 	struct camstream_video_device *device = vb2_get_drv_priv(queue);
 	struct camstream_buffer *buffer;
 	unsigned long flags;
+
+	camstream_frame_stop(device);
 
 	for (;;) {
 		spin_lock_irqsave(&device->queued_lock, flags);
