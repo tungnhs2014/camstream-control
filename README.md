@@ -33,9 +33,11 @@ V4L2 device
   -> camstream-capture
 ```
 
-The Stage 6C synthetic V4L2 capture driver will expose the same V4L2 interface
-and can be validated with `camstream-capture`. It will complement, not replace,
-the upstream `uvcvideo` reference path.
+The Stage 6C synthetic V4L2 capture driver is being introduced incrementally.
+Its registration skeleton will expose a V4L2 capture node for identification;
+later checkpoints will add the interface needed for validation with
+`camstream-capture`. It complements, rather than replaces, the upstream
+`uvcvideo` reference path.
 
 ## Validated baseline
 
@@ -85,6 +87,7 @@ runtime-tested behavior from enumerated capability and deferred work.
 ```text
 br2-external/  Project Buildroot external tree, defconfig, fragments, overlay
 apps/          Project-owned native userspace applications
+drivers/       Project-owned kernel drivers
 docs/guides/   Focused engineering bring-up guides
 docs/validation/ Public validation summaries
 scripts/host/  Host environment inspection helpers
@@ -99,9 +102,9 @@ camera frames do not belong in this repository.
 | --- | --- |
 | Stage 6A — C270 and upstream `uvcvideo` | **COMPLETE** |
 | Stage 6B — native V4L2 capture application | **COMPLETE** |
-| Stage 6C — synthetic V4L2 capture driver | **NEXT** |
+| Stage 6C — synthetic V4L2 capture driver | **IN PROGRESS** |
 | Stage 7 — GStreamer integration | **PLANNED** |
 
-Stage 6 is not complete because Stage 6C remains pending. Each new layer must
+Stage 6 is not complete because Stage 6C remains in progress. Each new layer must
 preserve the upstream UVC/V4L2 baseline and pass its prerequisite gate before
 the next layer begins.
