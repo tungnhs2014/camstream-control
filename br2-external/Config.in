@@ -1,1 +1,1 @@
-# CamStream Control package configuration will be added in later stages.
+source "$BR2_EXTERNAL_CAMSTREAM_PATH/package/camstream-capture/Config.in"

@@ -9,8 +9,8 @@ BeagleBone Black.
 
 Stage 6A proves the standard UVC/V4L2 reference path before any custom capture
 driver or native capture application is developed. It does not implement the
-Stage 6B custom V4L2 driver, select a production format, validate GStreamer, or
-claim long-term USB stability.
+later native application or custom V4L2 driver, select a production format,
+validate GStreamer, or claim long-term USB stability.
 
 ## 2. Hardware and software prerequisites
 

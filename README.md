@@ -11,7 +11,7 @@ USB UVC camera.
 The production-facing reference path is:
 
 ```text
-Logitech C270 -> uvcvideo -> V4L2 -> native capture -> GStreamer -> service
+Logitech C270 -> uvcvideo -> V4L2 -> camstream-capture -> GStreamer -> service
 ```
 
 A later learning path will implement a virtual V4L2 capture driver and feed it
@@ -32,20 +32,21 @@ replace, the upstream `uvcvideo` reference path.
 
 ## Project status
 
-Completed checkpoints through Stage 6A are:
+Completed engineering checkpoints and validated functionality are:
 
 - Stage 1: Ubuntu host setup and verification
 - Stage 2: known-good BeagleBone Black hardware baseline
 - Stages 3–4: reproducible Buildroot external tree, boot image, UART boot, and
   target baseline
 - Stage 5: Wi-Fi networking, DHCP, DNS, Dropbear SSH, and SCP
-- Stage 6A: upstream UVC/V4L2 integration, capability inspection, and one
-  visually verified 640x480 MJPEG frame capture
+- Stage 6A — C270 with upstream `uvcvideo`: **COMPLETE**
+- Stage 6B — native V4L2 capture application: **COMPLETE**, including
+  Buildroot packaging and packaged BBB/C270 runtime validation
 
-Stage 6A is the current completed implementation checkpoint. Stage 6B has not
-started. Advertised camera modes and controls have not all been exercised, and
-long-term stability under the observed multi-device USB topology remains
-**DEFERRED**.
+Stage 6B application functionality, documentation, Buildroot integration,
+clean image generation, and packaged BBB/C270 validation are **PASS**. YUYV
+640x480 at 30 fps remains unstable under the current USB topology, and
+long-term USB stability remains **DEFERRED** without a proven root cause.
 
 ## Documentation
 
@@ -53,7 +54,9 @@ long-term stability under the observed multi-device USB topology remains
 - [BeagleBone Buildroot bring-up](docs/guides/beaglebone-buildroot-bringup.md)
 - [Network and remote-access bring-up](docs/guides/network-remote-access-bringup.md)
 - [V4L2 USB camera bring-up](docs/guides/v4l2-camera-bringup.md)
+- [Native V4L2 capture application](docs/guides/native-v4l2-capture.md)
 - [Stage 6A V4L2 validation](docs/validation/stage-06a-v4l2-camera-bringup.md)
+- [Stage 6B native application validation](docs/validation/stage-06b-native-v4l2-app.md)
 
 Guides explain the reproducible project flow. Validation reports distinguish
 runtime-tested behavior from enumerated capability and deferred work.
@@ -62,6 +65,7 @@ runtime-tested behavior from enumerated capability and deferred work.
 
 ```text
 br2-external/  Project Buildroot external tree, defconfig, fragments, overlay
+apps/          Project-owned native userspace applications
 docs/guides/   Focused engineering bring-up guides
 docs/validation/ Public validation summaries
 scripts/host/  Host environment inspection helpers
@@ -72,7 +76,13 @@ camera frames do not belong in this repository.
 
 ## Roadmap
 
-The next implementation work is the Stage 6B virtual V4L2 learning driver,
-followed by native capture, GStreamer integration, the control service, and
-system-level validation. Each layer must preserve the upstream UVC/V4L2
-baseline and pass its prerequisite gate before the next layer begins.
+| Stage | Status |
+| --- | --- |
+| Stage 6A — C270 and upstream `uvcvideo` | **COMPLETE** |
+| Stage 6B — native V4L2 capture application | **COMPLETE** |
+| Stage 6C — custom synthetic V4L2 driver | **NEXT** |
+| Stage 7 — GStreamer integration | **PLANNED** |
+
+Stage 6 is not complete because Stage 6C remains pending. Each new layer must
+preserve the upstream UVC/V4L2 baseline and pass its prerequisite gate before
+the next layer begins.
