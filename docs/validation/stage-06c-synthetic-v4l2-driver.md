@@ -9,23 +9,24 @@
 - Stage 6C.2 BeagleBone Black runtime: **PASS**
 - Stage 6C.2: **COMPLETE**
 - Stage 6C.3 source and build validation: **PASS**
-- Stage 6C.3 BeagleBone Black runtime: **PENDING**
+- Stage 6C.3 BeagleBone Black runtime validation: **PASS**
+- Stage 6C.3: **COMPLETE**
 - Stage 6C: **IN PROGRESS**
 
-The completed checkpoints provide device registration and a deterministic
-single-planar format-negotiation contract. The Stage 6C.3 working tree adds
-VB2 MMAP allocation and streaming lifecycle support, but intentionally does
-not complete buffers or generate frames. Target validation of that boundary
-remains pending.
+The completed checkpoints provide device registration, a deterministic
+single-planar format-negotiation contract, and a validated VB2 MMAP streaming
+lifecycle. Stage 6C.3 intentionally does not complete buffers or generate
+frames; synthetic frame production remains assigned to Stage 6C.4.
 
 ## Implementation boundary
 
 The project-owned `camstream_video` module registers one dynamically numbered
 V4L2 capture node. It supports open, close, ioctl dispatch, `VIDIOC_QUERYCAP`,
 fixed-format enumeration and negotiation, and fixed capture-parameter
-negotiation. The Stage 6C.3 working tree also supports an MMAP-backed VB2 queue
-and start/stop lifecycle. It advertises `V4L2_CAP_VIDEO_CAPTURE` and
-`V4L2_CAP_STREAMING`, but it does not yet complete or dequeue a valid frame.
+negotiation. The Stage 6C.3 implementation also supports an MMAP-backed VB2
+queue and start/stop lifecycle. It advertises `V4L2_CAP_VIDEO_CAPTURE` and
+`V4L2_CAP_STREAMING`, but it intentionally does not complete or dequeue a
+valid frame.
 
 The private device state owns the `v4l2_device`, allocated `video_device`, and
 mutex, plus the VB2 queue and protected driver-owned buffer list.
@@ -344,8 +345,8 @@ path belongs to later Stage 6C checkpoints.
 - Kernel-doc validation: **PASS**
 - Linux 6.18.1 module build with `W=1`: **PASS**
 - Buildroot package rebuild: **PASS**
-- BeagleBone Black runtime: **PENDING**
-- Stage 6C.3: **IN PROGRESS**
+- BeagleBone Black runtime validation: **PASS**
+- Stage 6C.3: **COMPLETE**
 - Stage 6C: **IN PROGRESS**
 
 Stage 6C.3 adds buffer allocation, mapping, queue ownership, and start/stop
@@ -395,23 +396,74 @@ or full image rebuild was performed. The unstripped module is a 32-bit
 little-endian ARM EABI5 object with Linux 6.18.1 `vermagic`. Buildroot staged
 the module under `/lib/modules/6.18.1/updates/camstream_video.ko`.
 
+### BeagleBone Black runtime evidence
+
+The Stage 6C.3 implementation from commit `509ea60` was exercised on the
+BeagleBone Black. The synthetic node was dynamically assigned `/dev/video2`
+during this test. That node number is observed evidence for this session only;
+it is not a fixed device number or ABI.
+
+`VIDIOC_QUERYCAP` reported Video Capture, Streaming, and Device Capabilities.
+The Stage 6C.2 format contract also passed regression testing:
+
+| Property | Observed value |
+| --- | --- |
+| Pixel format | YUYV |
+| Resolution | 640x480 |
+| Frame rate negotiation | 30 fps |
+| Bytes per line | 1280 |
+| Image size | 614400 bytes |
+
+The Stage 6B `camstream-capture` application requested four buffers and the
+driver granted four. `QUERYBUF` reported a 614400-byte length for every
+buffer. All four buffers mapped successfully, all four `QBUF` operations
+passed, and `STREAMON` passed.
+
+Because Stage 6C.3 intentionally has no frame producer, `poll` timed out after
+2000 ms. The timeout and application exit status 1 are expected checkpoint
+results; no successful `DQBUF` is claimed. `STREAMOFF` and MMAP cleanup passed.
+
+A second complete lifecycle run again reached `STREAMON` and the expected poll
+timeout. Cleanup passed and no stale queue or driver-list state was observed.
+This repeated result validates queue reuse and teardown at the deliberate
+no-frame boundary; it does not validate frame production.
+
+`rmmod camstream_video` returned 0 and the synthetic node disappeared. The C270
+nodes `/dev/video0` and `/dev/video1` remained, and `/dev/media0` remained
+available. No kernel WARNING, Oops, BUG, list corruption, or use-after-free was
+observed.
+
+USB reset events involving the C270 were observed and remain
+**KNOWN / DEFERRED**. This evidence does not attribute them to
+`camstream_video`; no root-cause claim is made.
+
 ### Acceptance boundary
 
-| Requirement | Current result |
+| Requirement | Result |
 | --- | --- |
 | Source implementation | **PASS** |
 | `checkpatch.pl` and kernel-doc | **PASS** |
 | Linux 6.18.1 `W=1` build | **PASS** |
 | Buildroot package rebuild | **PASS** |
-| `V4L2_CAP_STREAMING` on BBB | **PENDING** |
-| REQBUFS / QUERYBUF / MMAP / QBUF on BBB | **PENDING** |
-| STREAMON / poll timeout / STREAMOFF on BBB | **PENDING** |
-| Repeat-run and unload cleanup on BBB | **PENDING** |
-| Successful DQBUF | **NOT REQUIRED — STAGE 6C.4** |
-| Synthetic YUYV payload | **NOT IMPLEMENTED — STAGE 6C.4** |
+| Streaming capability | **PASS** |
+| Stage 6C.2 format regression | **PASS** |
+| `REQBUFS` | **PASS** |
+| `QUERYBUF` | **PASS** |
+| MMAP | **PASS** |
+| `QBUF` | **PASS** |
+| `STREAMON` | **PASS** |
+| Poll timeout | **EXPECTED** |
+| Successful DQBUF | **NOT IMPLEMENTED — STAGE 6C.4** |
+| `STREAMOFF` | **PASS** |
+| MMAP cleanup | **PASS** |
+| Repeat lifecycle | **PASS** |
+| Expected application exit status 1 | **PASS** |
+| Module unload | **PASS** |
+| Synthetic-node removal | **PASS** |
+| C270 coexistence | **PASS** |
+| Kernel WARNING/Oops/BUG | **NONE OBSERVED** |
 
-Stage 6C.3 is not complete until the BBB lifecycle tests below pass. Stage 6C
-remains **IN PROGRESS**.
+Stage 6C.3 is **COMPLETE**. Stage 6C remains **IN PROGRESS**.
 
 ### BeagleBone Black validation commands
 
@@ -492,5 +544,5 @@ Expected Stage 6C.3 behavior is: capability, enumeration, format/parameter
 negotiation, REQBUFS, QUERYBUF, MMAP, QBUF, and STREAMON pass; `poll` times out;
 STREAMOFF and all subsequent cleanup pass. DQBUF success, YUYV payload,
 sequence/timestamp completion, and 30-fps production remain **PENDING** for
-Stage 6C.4. BBB runtime results must be recorded only after these commands are
-actually run.
+Stage 6C.4. The recorded BBB evidence above directly validated this Stage 6C.3
+boundary twice.
