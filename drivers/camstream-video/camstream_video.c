@@ -5,6 +5,7 @@
 #include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/videodev2.h>
 
 #include <media/v4l2-device.h>
 #include <media/v4l2-dev.h>
@@ -12,12 +13,21 @@
 #include <media/v4l2-ioctl.h>
 
 #define CAMSTREAM_DRIVER_NAME "camstream-video"
+#define CAMSTREAM_WIDTH 640U
+#define CAMSTREAM_HEIGHT 480U
+#define CAMSTREAM_BYTES_PER_PIXEL 2U
+#define CAMSTREAM_BYTES_PER_LINE \
+	(CAMSTREAM_WIDTH * CAMSTREAM_BYTES_PER_PIXEL)
+#define CAMSTREAM_SIZE_IMAGE (CAMSTREAM_BYTES_PER_LINE * CAMSTREAM_HEIGHT)
+#define CAMSTREAM_FRAME_RATE 30U
 
 /**
  * struct camstream_video_device - resources owned by one CamStream video node
  * @v4l2_dev: V4L2 core device registered for the module lifetime
  * @video_dev: Dynamically allocated capture node; registration owns release
  * @lock: Serializes V4L2 ioctls for the video node
+ * @active_format: Effective single-planar capture format
+ * @timeperframe: Fixed capture interval exposed to userspace
  *
  * The module allocates this structure before registering either V4L2 object.
  * After successful video-node registration, video_unregister_device() releases
@@ -27,9 +37,33 @@ struct camstream_video_device {
 	struct v4l2_device v4l2_dev;
 	struct video_device *video_dev;
 	struct mutex lock;
+	struct v4l2_pix_format active_format;
+	struct v4l2_fract timeperframe;
 };
 
 static struct camstream_video_device *camstream_device;
+
+/**
+ * camstream_fill_format - normalize to the single supported capture format
+ * @pix: Pixel-format structure to replace with the effective format
+ *
+ * Stage 6C.2 supports packed YUYV at 640x480 only. This helper is the common
+ * contract used for initialization and all format-negotiation callbacks.
+ */
+static void camstream_fill_format(struct v4l2_pix_format *pix)
+{
+	memset(pix, 0, sizeof(*pix));
+	pix->width = CAMSTREAM_WIDTH;
+	pix->height = CAMSTREAM_HEIGHT;
+	pix->pixelformat = V4L2_PIX_FMT_YUYV;
+	pix->field = V4L2_FIELD_NONE;
+	pix->bytesperline = CAMSTREAM_BYTES_PER_LINE;
+	pix->sizeimage = CAMSTREAM_SIZE_IMAGE;
+	pix->colorspace = V4L2_COLORSPACE_SRGB;
+	pix->ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
+	pix->quantization = V4L2_QUANTIZATION_DEFAULT;
+	pix->xfer_func = V4L2_XFER_FUNC_DEFAULT;
+}
 
 static int camstream_querycap(struct file *file, void *priv,
 			      struct v4l2_capability *cap)
@@ -42,6 +76,114 @@ static int camstream_querycap(struct file *file, void *priv,
 	return 0;
 }
 
+static int camstream_enum_fmt_vid_cap(struct file *file, void *priv,
+				      struct v4l2_fmtdesc *format)
+{
+	if (format->type != V4L2_BUF_TYPE_VIDEO_CAPTURE || format->index != 0)
+		return -EINVAL;
+
+	format->pixelformat = V4L2_PIX_FMT_YUYV;
+	strscpy(format->description, "YUYV 4:2:2",
+		sizeof(format->description));
+
+	return 0;
+}
+
+static int camstream_enum_framesizes(struct file *file, void *priv,
+				     struct v4l2_frmsizeenum *size)
+{
+	if (size->index != 0 || size->pixel_format != V4L2_PIX_FMT_YUYV)
+		return -EINVAL;
+
+	size->type = V4L2_FRMSIZE_TYPE_DISCRETE;
+	size->discrete.width = CAMSTREAM_WIDTH;
+	size->discrete.height = CAMSTREAM_HEIGHT;
+
+	return 0;
+}
+
+static int camstream_enum_frameintervals(struct file *file, void *priv,
+					 struct v4l2_frmivalenum *interval)
+{
+	if (interval->index != 0 ||
+	    interval->pixel_format != V4L2_PIX_FMT_YUYV ||
+	    interval->width != CAMSTREAM_WIDTH ||
+	    interval->height != CAMSTREAM_HEIGHT)
+		return -EINVAL;
+
+	interval->type = V4L2_FRMIVAL_TYPE_DISCRETE;
+	interval->discrete.numerator = 1;
+	interval->discrete.denominator = CAMSTREAM_FRAME_RATE;
+
+	return 0;
+}
+
+static int camstream_try_fmt_vid_cap(struct file *file, void *priv,
+				     struct v4l2_format *format)
+{
+	if (format->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		return -EINVAL;
+
+	camstream_fill_format(&format->fmt.pix);
+
+	return 0;
+}
+
+static int camstream_g_fmt_vid_cap(struct file *file, void *priv,
+				   struct v4l2_format *format)
+{
+	struct camstream_video_device *device = video_drvdata(file);
+
+	if (format->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		return -EINVAL;
+
+	format->fmt.pix = device->active_format;
+
+	return 0;
+}
+
+static int camstream_s_fmt_vid_cap(struct file *file, void *priv,
+				   struct v4l2_format *format)
+{
+	struct camstream_video_device *device = video_drvdata(file);
+	int ret;
+
+	ret = camstream_try_fmt_vid_cap(file, priv, format);
+	if (ret)
+		return ret;
+
+	device->active_format = format->fmt.pix;
+
+	return 0;
+}
+
+static int camstream_fill_streamparm(struct file *file,
+				     struct v4l2_streamparm *parm)
+{
+	struct camstream_video_device *device = video_drvdata(file);
+
+	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		return -EINVAL;
+
+	memset(&parm->parm.capture, 0, sizeof(parm->parm.capture));
+	parm->parm.capture.capability = V4L2_CAP_TIMEPERFRAME;
+	parm->parm.capture.timeperframe = device->timeperframe;
+
+	return 0;
+}
+
+static int camstream_g_parm(struct file *file, void *priv,
+			    struct v4l2_streamparm *parm)
+{
+	return camstream_fill_streamparm(file, parm);
+}
+
+static int camstream_s_parm(struct file *file, void *priv,
+			    struct v4l2_streamparm *parm)
+{
+	return camstream_fill_streamparm(file, parm);
+}
+
 static const struct v4l2_file_operations camstream_fops = {
 	.owner = THIS_MODULE,
 	.open = v4l2_fh_open,
@@ -51,6 +193,14 @@ static const struct v4l2_file_operations camstream_fops = {
 
 static const struct v4l2_ioctl_ops camstream_ioctl_ops = {
 	.vidioc_querycap = camstream_querycap,
+	.vidioc_enum_fmt_vid_cap = camstream_enum_fmt_vid_cap,
+	.vidioc_enum_framesizes = camstream_enum_framesizes,
+	.vidioc_enum_frameintervals = camstream_enum_frameintervals,
+	.vidioc_try_fmt_vid_cap = camstream_try_fmt_vid_cap,
+	.vidioc_g_fmt_vid_cap = camstream_g_fmt_vid_cap,
+	.vidioc_s_fmt_vid_cap = camstream_s_fmt_vid_cap,
+	.vidioc_g_parm = camstream_g_parm,
+	.vidioc_s_parm = camstream_s_parm,
 };
 
 static int __init camstream_video_init(void)
@@ -64,6 +214,9 @@ static int __init camstream_video_init(void)
 		return -ENOMEM;
 
 	mutex_init(&device->lock);
+	camstream_fill_format(&device->active_format);
+	device->timeperframe.numerator = 1;
+	device->timeperframe.denominator = CAMSTREAM_FRAME_RATE;
 	strscpy(device->v4l2_dev.name, CAMSTREAM_DRIVER_NAME,
 		sizeof(device->v4l2_dev.name));
 

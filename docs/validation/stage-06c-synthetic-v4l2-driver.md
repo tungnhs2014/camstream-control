@@ -1,13 +1,12 @@
-# Stage 6C.1 — Synthetic V4L2 Capture Driver Skeleton
+# Stage 6C — Synthetic V4L2 Capture Driver
 
 ## Checkpoint status
 
 - Validation date: 2026-07-26
 - Branch: `stage/06c-synthetic-v4l2-driver`
-- Source implementation: **PASS**
-- Linux 6.18.1 module build with `W=1`: **PASS**
-- BeagleBone Black runtime: **PASS**
 - Stage 6C.1: **COMPLETE**
+- Stage 6C.2 source and build validation: **PASS**
+- Stage 6C.2 BeagleBone Black runtime: **PENDING — NOT TESTED**
 - Stage 6C: **IN PROGRESS**
 
 This checkpoint introduces only the registration skeleton. It does not claim
@@ -146,6 +145,129 @@ ls -l /dev/video*
 dmesg | tail -n 40
 ```
 
-Stage 6C.1 satisfies its acceptance criteria and is **COMPLETE**. Stage 6C
-remains **IN PROGRESS**; format negotiation, buffer handling, streaming, and
-synthetic frame generation belong to later checkpoints.
+Stage 6C.1 satisfies its acceptance criteria and is **COMPLETE**. At that
+checkpoint boundary, format negotiation, buffer handling, streaming, and
+synthetic frame generation remained assigned to later checkpoints.
+
+## Stage 6C.2 — Fixed Format Negotiation
+
+### Implementation status
+
+- Source implementation: **PASS**
+- Linux kernel coding style: **PASS**
+- `checkpatch.pl`: **PASS**
+- Kernel-doc validation: **PASS**
+- Linux 6.18.1 module build with `W=1`: **PASS**
+- Buildroot package rebuild: **PASS**
+- BeagleBone Black runtime: **PENDING — NOT TESTED**
+- Stage 6C.2: **IN PROGRESS**
+
+Stage 6C.2 adds only a deterministic single-planar format and frame-interval
+contract. It does not add a queue, exchange image data, or pace frames.
+
+### Effective capture contract
+
+| Property | Effective value |
+| --- | --- |
+| Buffer type | `V4L2_BUF_TYPE_VIDEO_CAPTURE` |
+| Pixel format | `V4L2_PIX_FMT_YUYV` |
+| Resolution | 640x480 |
+| Field | `V4L2_FIELD_NONE` |
+| Bytes per line | 1280 |
+| Image size | 614400 bytes |
+| Frame interval | 1/30 second |
+| Effective frame rate | 30 fps |
+| Colorspace | `V4L2_COLORSPACE_SRGB` |
+
+The format helper normalizes every supported request to this contract and
+sets default YCbCr encoding, quantization, and transfer-function metadata.
+`VIDIOC_TRY_FMT` returns the effective format without modifying active state.
+`VIDIOC_S_FMT` stores the normalized result, and `VIDIOC_G_FMT` returns that
+active format.
+
+Format enumeration exposes one `YUYV 4:2:2` entry, one discrete 640x480 frame
+size, and one discrete 1/30-second frame interval. Unsupported indices,
+formats, sizes, intervals, and buffer types return `-EINVAL`.
+
+`VIDIOC_G_PARM` and `VIDIOC_S_PARM` expose `V4L2_CAP_TIMEPERFRAME` and normalize
+the frame interval to 1/30 second. This is negotiation metadata only; actual
+30-fps frame production remains outside Stage 6C.2.
+
+The ioctl table contains only `VIDIOC_QUERYCAP`, format/size/interval
+enumeration, `TRY_FMT`, `G_FMT`, `S_FMT`, `G_PARM`, and `S_PARM`. The device
+still advertises `V4L2_CAP_VIDEO_CAPTURE` without `V4L2_CAP_STREAMING` or
+`V4L2_CAP_READWRITE`.
+
+### Build evidence
+
+The existing Buildroot `camstream-video` package was rebuilt from a clean
+package directory against Linux 6.18.1 with `W=1`. No warning attributable to
+`camstream_video` was emitted. Kernel `checkpatch.pl` reported zero errors and
+zero warnings, and `scripts/kernel-doc -none` parsed the source without an
+error or warning.
+
+The rebuilt `camstream_video.ko` remains a 32-bit little-endian ARM EABI5
+module with Linux 6.18.1 `vermagic` and a `videodev` dependency. Buildroot
+installed it under `/lib/modules/6.18.1/updates/` in the target tree. No full
+image rebuild was performed.
+
+### BeagleBone Black validation commands
+
+Confirm the target `v4l2-ctl` syntax, load the module, and identify the node by
+driver identity rather than by a fixed video number:
+
+```sh
+v4l2-ctl --help-vidcap 2>/dev/null || v4l2-ctl --help
+uname -r
+find "/lib/modules/$(uname -r)" -name '*camstream*' -print
+modprobe camstream_video
+
+CAMSTREAM_NODE=
+for node in /dev/video*; do
+    if v4l2-ctl -d "$node" --info 2>/dev/null |
+       grep -q 'Driver name.*camstream-video'; then
+        CAMSTREAM_NODE="$node"
+        break
+    fi
+done
+test -n "$CAMSTREAM_NODE" || {
+    echo "CamStream video node not found"
+    exit 1
+}
+echo "CamStream node: $CAMSTREAM_NODE"
+```
+
+Exercise enumeration, active-format reporting, normalization, and fixed frame
+parameters:
+
+```sh
+v4l2-ctl -d "$CAMSTREAM_NODE" --info
+v4l2-ctl -d "$CAMSTREAM_NODE" --list-formats-ext
+v4l2-ctl -d "$CAMSTREAM_NODE" --get-fmt-video
+
+v4l2-ctl -d "$CAMSTREAM_NODE" \
+    --set-fmt-video=width=640,height=480,pixelformat=YUYV
+v4l2-ctl -d "$CAMSTREAM_NODE" --get-fmt-video
+
+v4l2-ctl -d "$CAMSTREAM_NODE" \
+    --try-fmt-video=width=1920,height=1080,pixelformat=MJPG
+v4l2-ctl -d "$CAMSTREAM_NODE" --get-fmt-video
+
+v4l2-ctl -d "$CAMSTREAM_NODE" --get-parm
+v4l2-ctl -d "$CAMSTREAM_NODE" --set-parm=15
+v4l2-ctl -d "$CAMSTREAM_NODE" --get-parm
+
+dmesg | tail -n 50
+rmmod camstream_video
+dmesg | tail -n 50
+```
+
+Expected effective results are YUYV, 640x480, field none, 1280 bytes per line,
+614400-byte images, and 30 fps even after unsupported format or frame-rate
+requests. Runtime results remain **PENDING** until this is executed on the BBB.
+
+The Stage 6B `camstream-capture` application currently requires
+`V4L2_CAP_STREAMING` at its capability gate. It is therefore not a Stage 6C.2
+acceptance command and is expected to reject this non-streaming node before
+buffer setup. The application is unchanged; integration with its streaming
+path belongs to later Stage 6C checkpoints.
