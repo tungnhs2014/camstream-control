@@ -4,5 +4,6 @@ config BR2_PACKAGE_CAMSTREAM_VIDEO
 	help
 	  Build the CamStream synthetic V4L2 capture driver module.
 
-	  This first checkpoint provides device registration and
-	  VIDIOC_QUERYCAP only; it does not implement streaming.
+	  The current driver provides fixed YUYV format negotiation and an
+	  MMAP streaming lifecycle. Synthetic frame production is implemented
+	  by a later checkpoint.
