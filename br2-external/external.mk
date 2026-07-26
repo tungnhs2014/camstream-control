@@ -1,1 +1,1 @@
-# CamStream Control package makefiles will be added in later stages.
+include $(sort $(wildcard $(BR2_EXTERNAL_CAMSTREAM_PATH)/package/*/*.mk))

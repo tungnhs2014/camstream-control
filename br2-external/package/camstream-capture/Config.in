@@ -1,0 +1,5 @@
+config BR2_PACKAGE_CAMSTREAM_CAPTURE
+	bool "camstream-capture"
+	depends on BR2_INSTALL_LIBSTDCPP
+	help
+	  Native V4L2 diagnostic and capture utility for CamStream Control.

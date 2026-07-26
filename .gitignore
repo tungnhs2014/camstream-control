@@ -16,6 +16,9 @@ compile_commands.json
 *.so
 *.ko
 
+# Project application binaries
+/apps/camstream-capture/camstream-capture
+
 # Generated images
 *.img
 *.sdcard
