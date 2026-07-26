@@ -2,15 +2,14 @@
 
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/string.h>
-#include <linux/videodev2.h>
 
-#include <media/v4l2-device.h>
-#include <media/v4l2-dev.h>
 #include <media/v4l2-fh.h>
 #include <media/v4l2-ioctl.h>
+#include <media/videobuf2-v4l2.h>
+
+#include "camstream_video.h"
 
 #define CAMSTREAM_DRIVER_NAME "camstream-video"
 #define CAMSTREAM_WIDTH 640U
@@ -20,26 +19,6 @@
 	(CAMSTREAM_WIDTH * CAMSTREAM_BYTES_PER_PIXEL)
 #define CAMSTREAM_SIZE_IMAGE (CAMSTREAM_BYTES_PER_LINE * CAMSTREAM_HEIGHT)
 #define CAMSTREAM_FRAME_RATE 30U
-
-/**
- * struct camstream_video_device - resources owned by one CamStream video node
- * @v4l2_dev: V4L2 core device registered for the module lifetime
- * @video_dev: Dynamically allocated capture node; registration owns release
- * @lock: Serializes V4L2 ioctls for the video node
- * @active_format: Effective single-planar capture format
- * @timeperframe: Fixed capture interval exposed to userspace
- *
- * The module allocates this structure before registering either V4L2 object.
- * After successful video-node registration, video_unregister_device() releases
- * @video_dev; the module then unregisters @v4l2_dev and frees this structure.
- */
-struct camstream_video_device {
-	struct v4l2_device v4l2_dev;
-	struct video_device *video_dev;
-	struct mutex lock;
-	struct v4l2_pix_format active_format;
-	struct v4l2_fract timeperframe;
-};
 
 static struct camstream_video_device *camstream_device;
 
@@ -148,6 +127,9 @@ static int camstream_s_fmt_vid_cap(struct file *file, void *priv,
 	struct camstream_video_device *device = video_drvdata(file);
 	int ret;
 
+	if (vb2_is_busy(&device->vb2_queue))
+		return -EBUSY;
+
 	ret = camstream_try_fmt_vid_cap(file, priv, format);
 	if (ret)
 		return ret;
@@ -187,8 +169,10 @@ static int camstream_s_parm(struct file *file, void *priv,
 static const struct v4l2_file_operations camstream_fops = {
 	.owner = THIS_MODULE,
 	.open = v4l2_fh_open,
-	.release = v4l2_fh_release,
+	.release = vb2_fop_release,
+	.poll = vb2_fop_poll,
 	.unlocked_ioctl = video_ioctl2,
+	.mmap = vb2_fop_mmap,
 };
 
 static const struct v4l2_ioctl_ops camstream_ioctl_ops = {
@@ -201,6 +185,12 @@ static const struct v4l2_ioctl_ops camstream_ioctl_ops = {
 	.vidioc_s_fmt_vid_cap = camstream_s_fmt_vid_cap,
 	.vidioc_g_parm = camstream_g_parm,
 	.vidioc_s_parm = camstream_s_parm,
+	.vidioc_reqbufs = vb2_ioctl_reqbufs,
+	.vidioc_querybuf = vb2_ioctl_querybuf,
+	.vidioc_qbuf = vb2_ioctl_qbuf,
+	.vidioc_dqbuf = vb2_ioctl_dqbuf,
+	.vidioc_streamon = vb2_ioctl_streamon,
+	.vidioc_streamoff = vb2_ioctl_streamoff,
 };
 
 static int __init camstream_video_init(void)
@@ -214,6 +204,8 @@ static int __init camstream_video_init(void)
 		return -ENOMEM;
 
 	mutex_init(&device->lock);
+	INIT_LIST_HEAD(&device->queued_buffers);
+	spin_lock_init(&device->queued_lock);
 	camstream_fill_format(&device->active_format);
 	device->timeperframe.numerator = 1;
 	device->timeperframe.denominator = CAMSTREAM_FRAME_RATE;
@@ -224,10 +216,14 @@ static int __init camstream_video_init(void)
 	if (ret)
 		goto err_destroy_mutex;
 
+	ret = camstream_vb2_queue_init(device);
+	if (ret)
+		goto err_unregister_v4l2;
+
 	video_dev = video_device_alloc();
 	if (!video_dev) {
 		ret = -ENOMEM;
-		goto err_unregister_v4l2;
+		goto err_release_queue;
 	}
 
 	device->video_dev = video_dev;
@@ -236,9 +232,11 @@ static int __init camstream_video_init(void)
 	video_dev->fops = &camstream_fops;
 	video_dev->ioctl_ops = &camstream_ioctl_ops;
 	video_dev->v4l2_dev = &device->v4l2_dev;
+	video_dev->queue = &device->vb2_queue;
 	video_dev->lock = &device->lock;
 	video_dev->release = video_device_release;
-	video_dev->device_caps = V4L2_CAP_VIDEO_CAPTURE;
+	video_dev->device_caps = V4L2_CAP_VIDEO_CAPTURE |
+				 V4L2_CAP_STREAMING;
 	video_dev->vfl_dir = VFL_DIR_RX;
 	video_set_drvdata(video_dev, device);
 
@@ -254,6 +252,8 @@ static int __init camstream_video_init(void)
 
 err_release_video:
 	video_device_release(video_dev);
+err_release_queue:
+	vb2_queue_release(&device->vb2_queue);
 err_unregister_v4l2:
 	v4l2_device_unregister(&device->v4l2_dev);
 err_destroy_mutex:
@@ -272,7 +272,7 @@ static void __exit camstream_video_exit(void)
 
 	v4l2_info(&device->v4l2_dev, "unregistering %s\n",
 		  video_device_node_name(device->video_dev));
-	video_unregister_device(device->video_dev);
+	vb2_video_unregister_device(device->video_dev);
 	v4l2_device_unregister(&device->v4l2_dev);
 	mutex_destroy(&device->lock);
 	kfree(device);
@@ -283,5 +283,5 @@ module_init(camstream_video_init);
 module_exit(camstream_video_exit);
 
 MODULE_AUTHOR("CamStream Control project");
-MODULE_DESCRIPTION("CamStream synthetic V4L2 capture driver skeleton");
+MODULE_DESCRIPTION("CamStream synthetic V4L2 capture driver");
 MODULE_LICENSE("GPL");

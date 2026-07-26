@@ -8,24 +8,30 @@
 - Stage 6C.2 source and build validation: **PASS**
 - Stage 6C.2 BeagleBone Black runtime: **PASS**
 - Stage 6C.2: **COMPLETE**
+- Stage 6C.3 source and build validation: **PASS**
+- Stage 6C.3 BeagleBone Black runtime: **PENDING**
 - Stage 6C: **IN PROGRESS**
 
 The completed checkpoints provide device registration and a deterministic
-single-planar format-negotiation contract. Buffer allocation, streaming, frame
-generation, and compatibility with the `camstream-capture` streaming path are
-not implemented yet.
+single-planar format-negotiation contract. The Stage 6C.3 working tree adds
+VB2 MMAP allocation and streaming lifecycle support, but intentionally does
+not complete buffers or generate frames. Target validation of that boundary
+remains pending.
 
 ## Implementation boundary
 
 The project-owned `camstream_video` module registers one dynamically numbered
 V4L2 capture node. It supports open, close, ioctl dispatch, `VIDIOC_QUERYCAP`,
 fixed-format enumeration and negotiation, and fixed capture-parameter
-negotiation. The driver advertises `V4L2_CAP_VIDEO_CAPTURE`; it does not
-advertise `V4L2_CAP_STREAMING`.
+negotiation. The Stage 6C.3 working tree also supports an MMAP-backed VB2 queue
+and start/stop lifecycle. It advertises `V4L2_CAP_VIDEO_CAPTURE` and
+`V4L2_CAP_STREAMING`, but it does not yet complete or dequeue a valid frame.
 
 The private device state owns the `v4l2_device`, allocated `video_device`, and
-mutex. Initialization registers those resources in forward order. Failure and
-module-exit paths unwind them in reverse order.
+mutex, plus the VB2 queue and protected driver-owned buffer list.
+Initialization registers those resources in forward order. Failure and
+module-exit paths unwind only initialized resources through the corresponding
+VB2/V4L2 release paths.
 
 Buildroot integrates the source as the local `camstream-video` package using
 the standard `kernel-module` infrastructure. The package is enabled in the
@@ -327,3 +333,164 @@ The Stage 6B `camstream-capture` application currently requires
 acceptance command and is expected to reject this non-streaming node before
 buffer setup. The application is unchanged; integration with its streaming
 path belongs to later Stage 6C checkpoints.
+
+## Stage 6C.3 — VB2 MMAP Streaming Lifecycle
+
+### Implementation status
+
+- Source implementation: **PASS**
+- Linux kernel coding style: **PASS**
+- `checkpatch.pl`: **PASS**
+- Kernel-doc validation: **PASS**
+- Linux 6.18.1 module build with `W=1`: **PASS**
+- Buildroot package rebuild: **PASS**
+- BeagleBone Black runtime: **PENDING**
+- Stage 6C.3: **IN PROGRESS**
+- Stage 6C: **IN PROGRESS**
+
+Stage 6C.3 adds buffer allocation, mapping, queue ownership, and start/stop
+lifecycle only. It deliberately produces no payload and never completes a
+buffer successfully. A finite userspace poll timeout is therefore the expected
+checkpoint boundary, not a frame-capture failure.
+
+### VB2 capture contract
+
+The driver initializes one single-planar `V4L2_BUF_TYPE_VIDEO_CAPTURE` queue
+with `VB2_MMAP` as its only I/O mode and `vb2_vmalloc_memops` as the allocation
+backend. Each VB2 allocation embeds the project buffer wrapper; no separate
+bookkeeping allocation is required. The existing device mutex is the queue and
+ioctl lock, while a spinlock protects only the driver-owned queued-buffer list.
+
+`queue_setup` derives its one-plane allocation size from the active format's
+`sizeimage` value. For the fixed Stage 6C.2 contract this is 614400 bytes. An
+existing requested layout is accepted only when it has exactly one plane large
+enough for that payload. `buf_prepare` enforces the same bound and sets a zero
+payload because no frame is produced in this checkpoint.
+
+After `QBUF`, a buffer remains on the protected driver list until stream
+teardown. `STREAMON` changes queue state but starts no timer, thread, workqueue,
+or hardware. `STREAMOFF` removes each driver-owned buffer from the list before
+returning it to VB2 with `VB2_BUF_STATE_ERROR`; the driver does not access it
+after ownership is relinquished. This also provides deterministic close and
+unload cleanup through the standard VB2 release path.
+
+The node now truthfully advertises `V4L2_CAP_VIDEO_CAPTURE` and
+`V4L2_CAP_STREAMING`, without `V4L2_CAP_READWRITE`. Standard VB2 helpers handle
+`REQBUFS`, `QUERYBUF`, `QBUF`, `DQBUF`, `STREAMON`, `STREAMOFF`, `poll`, `mmap`,
+and release. `S_FMT` returns `-EBUSY` while VB2 buffers exist so the active
+`sizeimage` cannot change underneath an allocated queue.
+
+### Source and build evidence
+
+The driver was split into a small registration/ioctl translation unit, a VB2
+translation unit, and a shared private header. Kbuild still emits the existing
+`camstream_video.ko` module. The Linux 6.18.1 external-module build completed
+with `W=1` and no driver warning. Kernel `checkpatch.pl` reported zero errors
+and zero warnings for each changed driver source/Makefile, and
+`scripts/kernel-doc -none` completed without an error or warning.
+
+The existing Buildroot `camstream-video` package was rebuilt using
+`camstream-video-dirclean` followed by `camstream-video`; no package redesign
+or full image rebuild was performed. The unstripped module is a 32-bit
+little-endian ARM EABI5 object with Linux 6.18.1 `vermagic`. Buildroot staged
+the module under `/lib/modules/6.18.1/updates/camstream_video.ko`.
+
+### Acceptance boundary
+
+| Requirement | Current result |
+| --- | --- |
+| Source implementation | **PASS** |
+| `checkpatch.pl` and kernel-doc | **PASS** |
+| Linux 6.18.1 `W=1` build | **PASS** |
+| Buildroot package rebuild | **PASS** |
+| `V4L2_CAP_STREAMING` on BBB | **PENDING** |
+| REQBUFS / QUERYBUF / MMAP / QBUF on BBB | **PENDING** |
+| STREAMON / poll timeout / STREAMOFF on BBB | **PENDING** |
+| Repeat-run and unload cleanup on BBB | **PENDING** |
+| Successful DQBUF | **NOT REQUIRED — STAGE 6C.4** |
+| Synthetic YUYV payload | **NOT IMPLEMENTED — STAGE 6C.4** |
+
+Stage 6C.3 is not complete until the BBB lifecycle tests below pass. Stage 6C
+remains **IN PROGRESS**.
+
+### BeagleBone Black validation commands
+
+Copy only the rebuilt module from the development host, replacing the target
+address with the current BBB address:
+
+```sh
+MODULE="$HOME/TungNHS/camstream-workspace/output/stage06-camera-v4l2/build/camstream-video-1.0/camstream_video.ko"
+BBB_IP='replace-with-bbb-ip'
+scp "$MODULE" "root@${BBB_IP}:/tmp/camstream_video.ko"
+```
+
+On the target, load the module and discover the node by driver identity rather
+than assuming `/dev/video2`:
+
+```sh
+uname -r
+insmod /tmp/camstream_video.ko
+
+CAMSTREAM_NODE=
+for node in /dev/video*; do
+    if v4l2-ctl -d "$node" --info 2>/dev/null |
+       grep -q 'Driver name.*camstream-video'; then
+        CAMSTREAM_NODE="$node"
+        break
+    fi
+done
+test -n "$CAMSTREAM_NODE" || {
+    echo "CamStream video node not found"
+    exit 1
+}
+echo "CamStream node: $CAMSTREAM_NODE"
+
+v4l2-ctl -d "$CAMSTREAM_NODE" --info
+v4l2-ctl -d "$CAMSTREAM_NODE" --list-formats-ext
+v4l2-ctl -d "$CAMSTREAM_NODE" --get-fmt-video
+v4l2-ctl -d "$CAMSTREAM_NODE" --get-parm
+```
+
+Run the existing Stage 6B boundary test twice. Each invocation must reach
+MMAP/QBUF/STREAMON, time out waiting for a completed frame, then exit non-zero
+without hanging while still performing STREAMOFF, unmap, `REQBUFS(count=0)`,
+and close cleanup:
+
+```sh
+run=1
+while [ "$run" -le 2 ]; do
+    /usr/bin/camstream-capture \
+        --device "$CAMSTREAM_NODE" \
+        --format YUYV \
+        --width 640 \
+        --height 480 \
+        --fps 30 \
+        --count 1
+    status=$?
+    echo "Boundary run $run exit status: $status"
+    test "$status" -ne 0 || {
+        echo "Unexpected completed frame in Stage 6C.3"
+        exit 1
+    }
+    run=$((run + 1))
+done
+```
+
+Finally inspect kernel health and coexistence, unload the module, and verify
+that only the dynamically identified synthetic node disappears:
+
+```sh
+v4l2-ctl --list-devices
+dmesg | tail -n 100
+rmmod camstream_video
+test ! -e "$CAMSTREAM_NODE"
+v4l2-ctl --list-devices
+dmesg | tail -n 100
+```
+
+Expected Stage 6C.3 behavior is: capability, enumeration, format/parameter
+negotiation, REQBUFS, QUERYBUF, MMAP, QBUF, and STREAMON pass; `poll` times out;
+STREAMOFF and all subsequent cleanup pass. DQBUF success, YUYV payload,
+sequence/timestamp completion, and 30-fps production remain **PENDING** for
+Stage 6C.4. BBB runtime results must be recorded only after these commands are
+actually run.
