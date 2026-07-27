@@ -8,7 +8,7 @@ USB UVC camera.
 
 ## Architecture
 
-Target multimedia path:
+Production multimedia path:
 
 ```text
 Logitech C270
@@ -29,15 +29,15 @@ IPC Client
 Diagnostic path:
 
 ```text
-V4L2 device
+camstream-video
+  -> V4L2
   -> camstream-capture
 ```
 
-The Stage 6C synthetic V4L2 capture driver is being introduced incrementally.
-Its registration skeleton will expose a V4L2 capture node for identification;
-later checkpoints will add the interface needed for validation with
-`camstream-capture`. It complements, rather than replaces, the upstream
-`uvcvideo` reference path.
+The completed Stage 6C synthetic V4L2 capture driver provides a fixed YUYV
+capture source for validating the same native V4L2 interface with
+`camstream-capture`. It complements, rather than replaces, the C270 production
+path through upstream `uvcvideo`.
 
 ## Validated baseline
 
@@ -63,6 +63,8 @@ Completed engineering checkpoints and validated functionality are:
 - Stage 6A — C270 with upstream `uvcvideo`: **COMPLETE**
 - Stage 6B — native V4L2 capture application: **COMPLETE**, including
   Buildroot packaging and packaged BBB/C270 runtime validation
+- Stage 6C — synthetic V4L2 capture driver: **COMPLETE**, including packaged
+  rootfs integration, paced YUYV capture, reload, cleanup, and C270 coexistence
 
 Stage 6B application functionality, documentation, Buildroot integration,
 clean image generation, and packaged BBB/C270 validation are **PASS**. YUYV
@@ -78,6 +80,7 @@ long-term USB stability remains **DEFERRED** without a proven root cause.
 - [Native V4L2 capture application](docs/guides/native-v4l2-capture.md)
 - [Stage 6A V4L2 validation](docs/validation/stage-06a-v4l2-camera-bringup.md)
 - [Stage 6B native application validation](docs/validation/stage-06b-native-v4l2-app.md)
+- [Stage 6C synthetic driver validation](docs/validation/stage-06c-synthetic-v4l2-driver.md)
 
 Guides explain the reproducible project flow. Validation reports distinguish
 runtime-tested behavior from enumerated capability and deferred work.
@@ -102,9 +105,9 @@ camera frames do not belong in this repository.
 | --- | --- |
 | Stage 6A — C270 and upstream `uvcvideo` | **COMPLETE** |
 | Stage 6B — native V4L2 capture application | **COMPLETE** |
-| Stage 6C — synthetic V4L2 capture driver | **IN PROGRESS** |
+| Stage 6C — synthetic V4L2 capture driver | **COMPLETE** |
 | Stage 7 — GStreamer integration | **PLANNED** |
 
-Stage 6 is not complete because Stage 6C remains in progress. Each new layer must
-preserve the upstream UVC/V4L2 baseline and pass its prerequisite gate before
-the next layer begins.
+Stage 6 is complete. Stage 7 is planned and has not started; it must preserve
+the upstream UVC/V4L2 baseline and pass its prerequisite gate before later
+layers begin.

@@ -15,7 +15,9 @@
 - Stage 6C.4 BeagleBone Black functional runtime validation: **PASS**
 - Stage 6C.4 pacing validation: **PASS**
 - Stage 6C.4: **COMPLETE**
-- Stage 6C: **IN PROGRESS**
+- Stage 6C.5 final Buildroot/runtime integration: **PASS**
+- Stage 6C.5: **COMPLETE**
+- Stage 6C: **COMPLETE**
 
 The completed checkpoints provide device registration, a deterministic
 single-planar format-negotiation contract, and a validated VB2 MMAP streaming
@@ -279,7 +281,8 @@ not establish the synthetic V4L2 capture driver as their cause.
 | C270 coexistence | **PASS** |
 | Kernel WARNING/Oops/BUG | **NONE OBSERVED** |
 
-Stage 6C.2 is **COMPLETE**. Stage 6C remains **IN PROGRESS**.
+Stage 6C.2 is **COMPLETE**. At that checkpoint boundary, Stage 6C remained
+**IN PROGRESS**.
 
 ### BeagleBone Black validation commands
 
@@ -354,7 +357,7 @@ path belongs to later Stage 6C checkpoints.
 - Buildroot package rebuild: **PASS**
 - BeagleBone Black runtime validation: **PASS**
 - Stage 6C.3: **COMPLETE**
-- Stage 6C: **IN PROGRESS**
+- Stage 6C after 6C.3: **IN PROGRESS**
 
 Stage 6C.3 adds buffer allocation, mapping, queue ownership, and start/stop
 lifecycle only. It deliberately produces no payload and never completes a
@@ -470,7 +473,8 @@ USB reset events involving the C270 were observed and remain
 | C270 coexistence | **PASS** |
 | Kernel WARNING/Oops/BUG | **NONE OBSERVED** |
 
-Stage 6C.3 is **COMPLETE**. Stage 6C remains **IN PROGRESS**.
+Stage 6C.3 is **COMPLETE**. At that checkpoint boundary, Stage 6C remained
+**IN PROGRESS**.
 
 ### BeagleBone Black validation commands
 
@@ -567,7 +571,7 @@ boundary twice before those later behaviors were implemented.
 - BeagleBone Black functional runtime validation: **PASS**
 - BeagleBone Black pacing validation: **PASS**
 - Stage 6C.4: **COMPLETE**
-- Stage 6C: **IN PROGRESS**
+- Stage 6C after 6C.4: **IN PROGRESS**
 
 Stage 6C.4 adds one delayed-work producer. It uses the existing driver-owned
 buffer list and does not allocate per-frame storage. `STREAMON` resets the
@@ -743,7 +747,8 @@ bandwidth, or host-controller cause is claimed.
 | C270 coexistence | **PASS** |
 | CamStream WARNING/Oops/BUG | **NONE OBSERVED** |
 
-Stage 6C.4 is **COMPLETE**. Stage 6C remains **IN PROGRESS**.
+Stage 6C.4 is **COMPLETE**. At that checkpoint boundary, Stage 6C remained
+**IN PROGRESS** pending final Buildroot-image integration validation.
 
 ### BeagleBone Black validation commands
 
@@ -896,3 +901,76 @@ The recorded visual validation is **PASS**. The output was 614400 bytes, and
 the converted 640x480 YUYV422 image showed the complete dark-to-light grayscale
 gradient expected with neutral U and V values of 128. No visible truncation or
 corruption was observed. The raw frame and converted image remain outside Git.
+
+## Stage 6C.5 — Final Buildroot and Runtime Integration
+
+### Integration status
+
+- Project Buildroot configuration: **PASS**
+- Final image/rootfs contents: **PASS**
+- Packaged BBB runtime validation: **PASS**
+- Reload and coexistence regression: **PASS**
+- Final teardown: **PASS**
+- Stage 6C.5: **COMPLETE**
+- Stage 6C: **COMPLETE**
+
+The project `beaglebone_defconfig` enables both
+`BR2_PACKAGE_CAMSTREAM_VIDEO=y` and `BR2_PACKAGE_CAMSTREAM_CAPTURE=y`.
+Inspection of the final Buildroot `rootfs.tar` confirmed these packaged
+artifacts:
+
+```text
+/lib/modules/6.18.1/updates/camstream_video.ko
+/usr/bin/camstream-capture
+```
+
+Final acceptance used the module and application installed in the image. A
+manual module copy through `/tmp` is not part of the Stage 6C.5 acceptance
+path.
+
+### Packaged BBB runtime evidence
+
+The packaged module dynamically registered `/dev/video2` in the tested
+sessions. That number is runtime evidence only and is not a fixed device ABI.
+The first packaged capture used YUYV 640x480 at the advertised 30 fps and
+passed REQBUFS, MMAP, QBUF, STREAMON, DQBUF, re-QBUF, STREAMOFF, and MMAP
+cleanup. It produced 60 valid frames, zero error frames, 614400 bytes used per
+frame, continuous sequences 0 through 59, and exit status 0.
+
+During capture, the CamStream synthetic node and the C270 nodes `/dev/video0`,
+`/dev/video1`, and `/dev/media0` remained available together.
+
+For the reload regression, `rmmod camstream_video` returned 0, the module was
+loaded again from `/lib/modules/6.18.1/updates/`, and a second 60-frame capture
+again produced 60 valid frames, zero error frames, and exit status 0. Final
+`rmmod camstream_video` returned 0; the synthetic node disappeared and the
+C270 nodes remained available.
+
+No CamStream-related WARNING, Oops, BUG, use-after-free, list corruption, or
+workqueue warning was observed. C270 USB reset events remain
+**KNOWN / DEFERRED** and are not attributed to `camstream_video`.
+
+### Stage 6C.5 acceptance matrix
+
+| Requirement | Result |
+| --- | --- |
+| `camstream-video` enabled in project defconfig | **PASS** |
+| `camstream-capture` enabled in project defconfig | **PASS** |
+| Module present in final rootfs | **PASS** |
+| Capture application present in final rootfs | **PASS** |
+| Packaged 60-frame capture | **PASS** |
+| Valid/error frames | **60 / 0** |
+| 614400-byte payload | **PASS** |
+| Sequence 0 through 59 | **PASS** |
+| STREAMOFF and MMAP cleanup | **PASS** |
+| C270 coexistence | **PASS** |
+| Rootfs module reload | **PASS** |
+| Second packaged 60-frame capture | **PASS** |
+| Final module unload | **PASS** |
+| Synthetic-node removal | **PASS** |
+| C270 availability after teardown | **PASS** |
+| CamStream WARNING/Oops/BUG | **NONE OBSERVED** |
+
+Stage 6C.5 is **COMPLETE**. Stages 6C.1 through 6C.5 have passed their defined
+gates, so Stage 6C is **COMPLETE**. Stage 7 remains **PLANNED** and has not
+started.
