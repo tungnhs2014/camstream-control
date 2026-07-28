@@ -67,14 +67,22 @@ Completed engineering checkpoints and validated functionality are:
   rootfs integration, paced YUYV capture, reload, cleanup, and C270 coexistence
 - Stage 7.1 — GStreamer Buildroot bring-up: **COMPLETE**, including packaged
   runtime tools and required element discovery on the BBB
+- Stage 7.2 — synthetic V4L2 GStreamer pipeline: **COMPLETE**, including three
+  successful 300-buffer runs with EOS and clean teardown
+- Stage 7.3 — real C270 GStreamer pipelines: **COMPLETE — FUNCTIONAL
+  VALIDATION**, covering raw YUY2 and MJPEG decode paths
 
 Stage 6B application functionality, documentation, Buildroot integration,
 clean image generation, and packaged BBB/C270 validation are **PASS**. YUYV
 640x480 at 30 fps remains unstable under the current USB topology, and
 long-term USB stability remains **DEFERRED** without a proven root cause.
 
-Stage 7 is **IN PROGRESS**. Runtime capture-pipeline validation belongs to a
-later Stage 7 checkpoint and has not yet been claimed.
+Stage 7 is **IN PROGRESS**. Synthetic and real-camera functional pipelines are
+validated; the Stage 7.4 C++ GStreamer component remains **PENDING**.
+
+C270 USB resets and inconsistent real throughput remain tracked as
+[STAGE7-USB-01](docs/validation/stage-07-gstreamer-integration.md). Stable
+production 30-fps operation and long-term USB reliability are not yet claimed.
 
 ## Documentation
 
@@ -113,6 +121,9 @@ camera frames do not belong in this repository.
 | Stage 6B — native V4L2 capture application | **COMPLETE** |
 | Stage 6C — synthetic V4L2 capture driver | **COMPLETE** |
 | Stage 7.1 — GStreamer Buildroot bring-up | **COMPLETE** |
+| Stage 7.2 — synthetic V4L2 pipeline | **COMPLETE** |
+| Stage 7.3 — real C270 pipelines | **COMPLETE — FUNCTIONAL VALIDATION** |
+| Stage 7.4 — C++ GStreamer pipeline component | **PENDING** |
 | Stage 7 — GStreamer integration | **IN PROGRESS** |
 
 Stage 6 is complete. Stage 7 is in progress and must preserve the upstream
