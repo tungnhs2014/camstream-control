@@ -65,11 +65,16 @@ Completed engineering checkpoints and validated functionality are:
   Buildroot packaging and packaged BBB/C270 runtime validation
 - Stage 6C — synthetic V4L2 capture driver: **COMPLETE**, including packaged
   rootfs integration, paced YUYV capture, reload, cleanup, and C270 coexistence
+- Stage 7.1 — GStreamer Buildroot bring-up: **COMPLETE**, including packaged
+  runtime tools and required element discovery on the BBB
 
 Stage 6B application functionality, documentation, Buildroot integration,
 clean image generation, and packaged BBB/C270 validation are **PASS**. YUYV
 640x480 at 30 fps remains unstable under the current USB topology, and
 long-term USB stability remains **DEFERRED** without a proven root cause.
+
+Stage 7 is **IN PROGRESS**. Runtime capture-pipeline validation belongs to a
+later Stage 7 checkpoint and has not yet been claimed.
 
 ## Documentation
 
@@ -81,6 +86,7 @@ long-term USB stability remains **DEFERRED** without a proven root cause.
 - [Stage 6A V4L2 validation](docs/validation/stage-06a-v4l2-camera-bringup.md)
 - [Stage 6B native application validation](docs/validation/stage-06b-native-v4l2-app.md)
 - [Stage 6C synthetic driver validation](docs/validation/stage-06c-synthetic-v4l2-driver.md)
+- [Stage 7 GStreamer validation](docs/validation/stage-07-gstreamer-integration.md)
 
 Guides explain the reproducible project flow. Validation reports distinguish
 runtime-tested behavior from enumerated capability and deferred work.
@@ -106,8 +112,9 @@ camera frames do not belong in this repository.
 | Stage 6A — C270 and upstream `uvcvideo` | **COMPLETE** |
 | Stage 6B — native V4L2 capture application | **COMPLETE** |
 | Stage 6C — synthetic V4L2 capture driver | **COMPLETE** |
-| Stage 7 — GStreamer integration | **PLANNED** |
+| Stage 7.1 — GStreamer Buildroot bring-up | **COMPLETE** |
+| Stage 7 — GStreamer integration | **IN PROGRESS** |
 
-Stage 6 is complete. Stage 7 is planned and has not started; it must preserve
-the upstream UVC/V4L2 baseline and pass its prerequisite gate before later
-layers begin.
+Stage 6 is complete. Stage 7 is in progress and must preserve the upstream
+UVC/V4L2 baseline while each remaining checkpoint passes its prerequisite
+gate.
