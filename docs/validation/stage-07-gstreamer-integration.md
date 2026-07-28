@@ -5,6 +5,9 @@
 - Validation date: 2026-07-28
 - Branch: `stage/07-gstreamer-integration`
 - Stage 7.1 — GStreamer Buildroot bring-up: **COMPLETE**
+- Stage 7.2 — Synthetic V4L2 GStreamer pipeline: **COMPLETE**
+- Stage 7.3 — Real C270 GStreamer pipelines: **COMPLETE — FUNCTIONAL VALIDATION**
+- Stage 7.4 — C++ GStreamer pipeline component: **PENDING**
 - Stage 7: **IN PROGRESS**
 
 ## Buildroot configuration
@@ -41,10 +44,10 @@ gst-inspect-1.0 jpegdec
 gst-inspect-1.0 videoconvert
 ```
 
-These checks validate installation of the runtime, command-line tools, and
-the required element factories. They do not claim that a real-camera or
-synthetic-camera GStreamer pipeline has run; pipeline execution belongs to a
-later Stage 7 checkpoint.
+These Stage 7.1 checks alone validate only the runtime, command-line tools,
+and required element factories. Synthetic pipeline execution is validated
+separately in Stage 7.2 below; real-camera execution is validated in Stage
+7.3.
 
 ## Acceptance matrix
 
@@ -59,5 +62,208 @@ later Stage 7 checkpoint.
 | `camstream-capture` package preserved | **PASS** |
 | `camstream-video` package preserved | **PASS** |
 
-Stage 7.1 is **COMPLETE**. Stage 7 remains **IN PROGRESS**; Stage 7.2 has not
-started.
+Stage 7.1 is **COMPLETE**. Stage 7 remains **IN PROGRESS**.
+
+## Stage 7.2 — Synthetic V4L2 GStreamer Pipeline
+
+### BeagleBone Black runtime evidence
+
+The synthetic driver dynamically registered as `video2` during this test; the
+node number is session evidence, not a fixed ABI. `v4l2src` opened the
+synthetic V4L2 capture node and negotiated:
+
+```text
+video/x-raw
+format=YUY2
+width=640
+height=480
+framerate=30/1
+```
+
+One `GST_DEBUG=2` run processed 300 buffers in approximately 10.11 seconds.
+Two additional 300-buffer runs also completed successfully. Every run received
+EOS, returned exit status 0, transitioned the pipeline back to NULL, and freed
+the pipeline. The module then unloaded and unregistered `video2` cleanly. No
+CamStream-related kernel WARNING, Oops, BUG, use-after-free, list corruption,
+or workqueue failure was observed.
+
+### Non-blocking observations
+
+- `VIDIOC_CROPCAP` failed because the fixed-format synthetic driver does not
+  implement crop capability. Stage 7.2 does not claim crop support.
+- GStreamer enabled the V4L2 copy threshold because buffer-count/zero-copy
+  certainty was insufficient. This is a performance observation, not a
+  functional failure; Stage 7.2 does not claim zero-copy support.
+
+### Acceptance matrix
+
+| Check | Result |
+| --- | --- |
+| Synthetic V4L2 node opened by `v4l2src` | **PASS** |
+| YUY2 640x480 at 30/1 negotiated | **PASS** |
+| `GST_DEBUG=2` 300-buffer run | **PASS** |
+| Two additional 300-buffer runs | **PASS** |
+| EOS for every run | **PASS** |
+| Exit status 0 for every run | **PASS** |
+| Pipeline returned to NULL and was freed | **PASS** |
+| Module unload and node removal | **PASS** |
+| CamStream-related kernel WARNING/Oops/BUG | **NONE OBSERVED** |
+| Crop support | **NOT CLAIMED** |
+| Zero-copy support | **NOT CLAIMED** |
+
+Stage 7.2 is **COMPLETE**. Stage 7 remains **IN PROGRESS**.
+
+## Stage 7.3 — Real C270 GStreamer Pipelines
+
+### Camera identification
+
+The real camera was identified dynamically rather than by a fixed video-node
+number:
+
+| Property | Observed value |
+| --- | --- |
+| Driver | `uvcvideo` |
+| Device | Logitech C270 HD WEBCAM |
+| Selected device capabilities | Video Capture, Streaming |
+
+No fixed `/dev/videoN` ABI is claimed.
+
+### Raw YUYV pipeline
+
+The accepted raw pipeline was:
+
+```text
+v4l2src
+  -> video/x-raw,format=YUY2,width=320,height=240,framerate=30/1
+  -> fakesink
+```
+
+Caps negotiation succeeded for YUY2 320x240 at 30/1. Repeated accepted runs
+reached EOS, returned exit status 0, transitioned to NULL, and freed the
+pipeline. One direct-USB GStreamer run completed 300 buffers in approximately
+10.32 seconds, or about 29.1 buffers per second. Later direct native V4L2 tests
+showed inconsistent throughput around 19–20 buffers per second.
+
+### MJPEG decode pipeline
+
+The accepted decode pipeline was:
+
+```text
+v4l2src
+  -> image/jpeg,width=640,height=480,framerate=30/1
+  -> jpegdec
+  -> videoconvert
+  -> fakesink
+```
+
+The source negotiated image/jpeg 640x480 at 30/1, and `jpegdec` produced
+video/x-raw I420. Repeated accepted runs reached EOS, returned exit status 0,
+transitioned to NULL, and freed the pipeline. Observed runtime was
+approximately 15.3–15.6 seconds for 300 buffers, or about 19–20 buffers per
+second.
+
+### MJPEG passthrough isolation
+
+The isolation pipeline removed software decoding and conversion:
+
+```text
+v4l2src
+  -> image/jpeg,width=640,height=480,framerate=30/1
+  -> fakesink
+```
+
+It completed with EOS and exit status 0. Processing 300 buffers took
+approximately 15.39 seconds, or about 19.5 buffers per second. This result
+does not show `jpegdec` or `videoconvert` to be the primary throughput
+bottleneck.
+
+### Native V4L2 isolation
+
+Direct `v4l2-ctl` capture reproduced approximately 19–20 fps without
+GStreamer:
+
+| Mode | Buffers | Elapsed | Final reported rate | Additional evidence |
+| --- | ---: | ---: | ---: | --- |
+| MJPEG 640x480 | 300 | approximately 16.25 s | approximately 19.8 fps | One dropped buffer; exit 0 |
+| YUYV 320x240 | 300 | approximately 16.14 s | approximately 19.9 fps | Exit 0 |
+
+### Isolation conclusion and functional acceptance
+
+Functional GStreamer integration passed. The inconsistent throughput is not
+specific to GStreamer: `fakesink sync=false` produced similar results, so sink
+synchronization was excluded; MJPEG passthrough produced similar throughput,
+so JPEG software decoding was not shown to be the primary bottleneck; and
+native V4L2 capture reproduced the lower rate without GStreamer. The USB hub
+and WiFi adapter were not the sole cause because resets also occurred with the
+C270 connected directly to the BBB. The exact root cause has not been
+established.
+
+| Check | Result |
+| --- | --- |
+| Dynamic C270 capture-node identification | **PASS** |
+| Raw YUY2 320x240 at 30/1 negotiation | **PASS** |
+| Raw repeated pipeline lifecycle | **PASS** |
+| MJPEG 640x480 at 30/1 negotiation | **PASS** |
+| `jpegdec` output as video/x-raw I420 | **PASS** |
+| MJPEG repeated pipeline lifecycle | **PASS** |
+| EOS and exit status 0 for accepted runs | **PASS** |
+| Pipeline NULL transition and cleanup | **PASS** |
+| Stable 30-fps throughput | **DEFERRED — STAGE7-USB-01** |
+| Long-term USB stability | **DEFERRED — STAGE7-USB-01** |
+
+Stage 7.3 is **COMPLETE — FUNCTIONAL VALIDATION**. It does not establish
+stable 30-fps throughput, zero-copy operation, crop support, or long-term USB
+reliability. Stage 7.4 remains **PENDING**, and Stage 7 remains
+**IN PROGRESS**.
+
+## Deferred platform issue — C270 USB stability and throughput
+
+### STAGE7-USB-01
+
+- Status: **OPEN / DEFERRED**
+- Stage 7 functional integration impact: **NON-BLOCKING**
+- Production-ready 30-fps or long-duration reliability claim: **BLOCKING**
+
+### Confirmed observations
+
+- Repeated messages reported `reset high-speed USB device ... using
+  musb-hdrc`.
+- Resets occurred with the C270 and WiFi adapter connected through a USB hub
+  and with the C270 connected directly to the BBB.
+- One earlier `uvcvideo` message reported `Failed to resubmit video URB (-1)`.
+- Throughput was inconsistent despite negotiated or configured 30/1 fps and
+  was often approximately 19–20 buffers per second.
+- One direct raw GStreamer run reached approximately 29.1 buffers per second.
+
+USB resets and inconsistent throughput are confirmed observations. A causal
+relationship between every reset and reduced throughput has not been proven.
+No kernel Oops, BUG, use-after-free, list corruption, or fatal GStreamer error
+was observed during the accepted functional runs; pipelines recovered or
+completed with EOS and exit status 0.
+
+### Future investigation checklist
+
+1. Retest with a known-good regulated BBB power supply.
+2. Check USB VBUS stability and current under camera load.
+3. Retest with a known-good USB cable and another UVC camera.
+4. Compare direct USB and externally powered hub topologies.
+5. Check C270 exposure controls, including auto-exposure priority, because
+   camera exposure may affect delivered frame rate.
+6. Capture bounded kernel logs around each test using BEGIN/END markers.
+7. Compare native `v4l2-ctl` and GStreamer using identical modes.
+8. Investigate `musb-hdrc` and `uvcvideo` behavior, including possible kernel
+   version or driver-specific issues.
+9. Use USB tracing or usbmon if available in a dedicated diagnostic build.
+
+Do not perform this investigation as part of the Stage 7.3 documentation
+closure.
+
+### Closure criteria
+
+STAGE7-USB-01 may be closed only when:
+
+- no USB reset occurs during a representative long-duration test;
+- no fatal UVC or URB error occurs;
+- repeated 300-buffer runs produce consistent throughput;
+- the required production mode sustains the agreed frame rate; and
+- results are reproduced across at least two runs.
