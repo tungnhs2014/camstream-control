@@ -8,8 +8,8 @@
 - Stage 7.2 — Synthetic V4L2 GStreamer pipeline: **COMPLETE**
 - Stage 7.3 — Real C270 GStreamer pipelines: **COMPLETE — FUNCTIONAL VALIDATION**
 - Stage 7.4 — C++ GStreamer pipeline component: **COMPLETE — FUNCTIONAL VALIDATION**
-- Stage 7.5 — scope pending owner definition: **PENDING**
-- Stage 7: **IN PROGRESS**
+- Stage 7.5 — Final acceptance: **COMPLETE — FINAL ACCEPTANCE**
+- Stage 7: **COMPLETE**
 
 ## Buildroot configuration
 
@@ -64,7 +64,7 @@ separately in Stage 7.2 below; real-camera execution is validated in Stage
 | `camstream-capture` package preserved | **PASS** |
 | `camstream-video` package preserved | **PASS** |
 
-Stage 7.1 is **COMPLETE**. Stage 7 remains **IN PROGRESS**.
+Stage 7.1 is **COMPLETE**. Stage 7 remained **IN PROGRESS** at this checkpoint.
 
 ## Stage 7.2 — Synthetic V4L2 GStreamer Pipeline
 
@@ -113,7 +113,7 @@ or workqueue failure was observed.
 | Crop support | **NOT CLAIMED** |
 | Zero-copy support | **NOT CLAIMED** |
 
-Stage 7.2 is **COMPLETE**. Stage 7 remains **IN PROGRESS**.
+Stage 7.2 is **COMPLETE**. Stage 7 remained **IN PROGRESS** at this checkpoint.
 
 ## Stage 7.3 — Real C270 GStreamer Pipelines
 
@@ -215,8 +215,8 @@ established.
 
 Stage 7.3 is **COMPLETE — FUNCTIONAL VALIDATION**. It does not establish
 stable 30-fps throughput, zero-copy operation, crop support, or long-term USB
-reliability. Stage 7.4 is validated separately below, and Stage 7 remains
-**IN PROGRESS**.
+reliability. Stage 7.4 is validated separately below; Stage 7 remained
+**IN PROGRESS** at the Stage 7.3 checkpoint.
 
 ## Stage 7.4 — Reusable C++ GStreamer Pipeline Component
 
@@ -254,9 +254,8 @@ The `cpp-quality-reviewer`, `gstreamer-reviewer`, and `bsp-reviewer` approved
 the final source/build checkpoint after generated-binary protection, explicit
 `videoconvert` dependency coverage, and bounded terminal-wait handling were
 reviewed. The pinned Buildroot 2026.02.3 `utils/check-package` execution was
-**NOT RUN** because its host Python `magic` dependency was unavailable. Its
-validation result is **NOT TESTED**, it is non-blocking for Stage 7.4, and its
-follow-up is deferred to Stage 7.5 when the dependency is available.
+subsequently run with BR2_EXTERNAL mode enabled. It processed 34 lines with 0
+warnings and returned exit status 0, so the package check is **PASS**.
 
 ### BeagleBone Black runtime evidence
 
@@ -330,7 +329,7 @@ or fatal GStreamer error was observed.
 | Corrected C270 YUY2 finite run | **PASS — FUNCTIONAL** |
 | Corrected C270 MJPEG-decode finite run | **PASS — FUNCTIONAL** |
 | Fatal kernel or GStreamer error | **NONE OBSERVED** |
-| Buildroot `utils/check-package` | **NOT TESTED — execution deferred to Stage 7.5; host `magic` unavailable** |
+| Buildroot `utils/check-package` | **PASS — 34 lines, 0 warnings, exit status 0** |
 | Stable delivered 30 fps | **DEFERRED — STAGE7-USB-01** |
 | Long-duration USB reliability | **DEFERRED — STAGE7-USB-01** |
 
@@ -338,8 +337,93 @@ Stage 7.4 is **COMPLETE — FUNCTIONAL VALIDATION**. Requested or negotiated
 30/1 caps and finite EOS completion do not establish stable delivered 30 fps.
 The bounded runs do not establish long-duration USB reliability, and the USB
 resets are not causally attributed to GStreamer. CMake migration remains
-outside Stage 7.4. Stage 7.5 is **PENDING** with product scope awaiting owner
-definition, and Stage 7 remains **IN PROGRESS**.
+outside Stage 7.4. Stage 7.5 final acceptance is recorded separately below.
+
+## Stage 7.5 — Final Acceptance
+
+### Build and package validation
+
+The pinned Buildroot 2026.02.3 package validator was run in BR2_EXTERNAL mode:
+
+```sh
+./utils/check-package -b \
+  ~/TungNHS/camstream-control/br2-external/package/camstream-gst-test/Config.in \
+  ~/TungNHS/camstream-control/br2-external/package/camstream-gst-test/camstream-gst-test.mk
+```
+
+It processed 34 lines, generated 0 warnings, and returned exit status 0. The
+`camstream-gst-test` package check is therefore **PASS**.
+
+A final incremental build used Buildroot 2026.02.3, the existing
+`stage06-camera-v4l2` output directory, and the project `CAMSTREAM`
+BR2_EXTERNAL tree. No `make clean` was used. The build finalized the target,
+regenerated the root filesystems, and generated `sdcard.img` successfully.
+
+The first artifact scan found an absolute kernel-build path in the synthetic
+module's compiled VB2 diagnostic string. The package build now passes a scoped
+`-fmacro-prefix-map` through Kbuild. Pinned `check-package` then processed the
+changed `camstream-video.mk` file with 0 warnings, the module package rebuild
+passed, and a second incremental image build completed successfully. This
+change affects compile-time path provenance, not driver behavior; no new BBB
+runtime result is claimed for it.
+
+The pinned validator command for that package file processed 14 lines with 0
+warnings and returned exit status 0:
+
+```sh
+./utils/check-package -b \
+  ~/TungNHS/camstream-control/br2-external/package/camstream-video/camstream-video.mk
+```
+
+### Final target and image artifacts
+
+The final target tree and generated `rootfs.tar` contain:
+
+```text
+/usr/bin/camstream-capture
+/usr/bin/camstream-gst-test
+/lib/modules/6.18.1/updates/camstream_video.ko
+/usr/lib/gstreamer-1.0/libgstcoreelements.so
+/usr/lib/gstreamer-1.0/libgstvideo4linux2.so
+/usr/lib/gstreamer-1.0/libgstjpeg.so
+/usr/lib/gstreamer-1.0/libgstvideoconvertscale.so
+```
+
+The required GStreamer, base, and video runtime libraries are also present.
+Both CamStream applications are 32-bit little-endian ARM EABI5 executables,
+use the hard-float loader, and report VFP register arguments. The module and
+inspected GStreamer libraries/plugins are ARM EABI5 objects. Neither
+application has an RPATH or RUNPATH entry.
+
+No project host-build path was found in the Stage 7 acceptance artifact set:
+the two CamStream applications, `camstream_video.ko`, the required GStreamer
+runtime libraries, or the four required plugins. This is a focused Stage 7
+artifact check, not a claim that every third-party file in the complete rootfs
+has been audited or remediated.
+
+### Acceptance matrix
+
+| Check | Result |
+| --- | --- |
+| Pinned Buildroot 2026.02.3 identity | **PASS** |
+| `camstream-gst-test` `check-package -b` | **PASS — 34 lines, 0 warnings, exit status 0** |
+| Final incremental image build without `make clean` | **PASS** |
+| Both CamStream applications in target and rootfs image | **PASS** |
+| Synthetic module in target and rootfs image | **PASS** |
+| Required GStreamer runtime libraries and plugins | **PASS** |
+| ARM EABI5 hard-float application architecture | **PASS** |
+| Host path absent from focused Stage 7 artifact set | **PASS** |
+| Existing accepted BBB runtime evidence retained | **PASS** |
+| New BBB runtime test during Stage 7.5 | **NOT TESTED — not required; prior evidence retained** |
+| Stable delivered production 30 fps | **DEFERRED — STAGE7-USB-01** |
+| Long-duration USB reliability | **DEFERRED — STAGE7-USB-01** |
+| USB reset attribution to GStreamer | **DEFERRED — no causal evidence** |
+| Production-ready camera reliability | **DEFERRED — STAGE7-USB-01** |
+
+Stage 7.5 is **COMPLETE — FINAL ACCEPTANCE**. Stages 7.1 through 7.5 are
+complete, so Stage 7 is **COMPLETE**. The open USB reliability issue does not
+invalidate the accepted functional integration, but it blocks production
+30-fps and long-duration reliability claims.
 
 ## Deferred platform issue — C270 USB stability and throughput
 
