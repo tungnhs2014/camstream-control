@@ -75,15 +75,17 @@ Completed engineering checkpoints and validated functionality are:
 - Stage 7.4 — reusable C++ GStreamer pipeline component: **COMPLETE —
   FUNCTIONAL VALIDATION**, including packaged BBB execution with the synthetic
   source and both accepted C270 paths
+- Stage 7.5 — final Buildroot and artifact acceptance: **COMPLETE — FINAL
+  ACCEPTANCE**
 
 Stage 6B application functionality, documentation, Buildroot integration,
 clean image generation, and packaged BBB/C270 validation are **PASS**. YUYV
 640x480 at 30 fps remains unstable under the current USB topology, and
 long-term USB stability remains **DEFERRED** without a proven root cause.
 
-Stage 7 is **IN PROGRESS**. Synthetic and real-camera functional pipelines and
-the Stage 7.4 C++ component are validated. Stage 7.5 remains **PENDING**; its
-product scope is not defined by this checkpoint.
+Stage 7 is **COMPLETE**. Synthetic and real-camera functional pipelines, the
+reusable C++ component, final incremental Buildroot image generation, and the
+focused target-artifact audit passed their acceptance gates.
 
 C270 USB resets and inconsistent real throughput remain tracked as
 [STAGE7-USB-01](docs/validation/stage-07-gstreamer-integration.md). Stable
@@ -129,9 +131,8 @@ camera frames do not belong in this repository.
 | Stage 7.2 — synthetic V4L2 pipeline | **COMPLETE** |
 | Stage 7.3 — real C270 pipelines | **COMPLETE — FUNCTIONAL VALIDATION** |
 | Stage 7.4 — C++ GStreamer pipeline component | **COMPLETE — FUNCTIONAL VALIDATION** |
-| Stage 7.5 — scope pending owner definition | **PENDING** |
-| Stage 7 — GStreamer integration | **IN PROGRESS** |
+| Stage 7.5 — final Buildroot and artifact acceptance | **COMPLETE — FINAL ACCEPTANCE** |
+| Stage 7 — GStreamer integration | **COMPLETE** |
 
-Stage 6 is complete. Stage 7 is in progress and must preserve the upstream
-UVC/V4L2 baseline while each remaining checkpoint passes its prerequisite
-gate.
+Stages 6 and 7 are complete. Future work must preserve the upstream UVC/V4L2
+baseline and the evidence boundaries recorded above.
