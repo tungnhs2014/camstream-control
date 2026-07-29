@@ -29,15 +29,16 @@ IPC Client
 Diagnostic path:
 
 ```text
-camstream-video
+C270 or camstream-video
   -> V4L2
-  -> camstream-capture
+  -> camstream-capture or camstream-gst-test
 ```
 
 The completed Stage 6C synthetic V4L2 capture driver provides a fixed YUYV
 capture source for validating the same native V4L2 interface with
-`camstream-capture`. It complements, rather than replaces, the C270 production
-path through upstream `uvcvideo`.
+`camstream-capture` and the native GStreamer diagnostic component. It
+complements, rather than replaces, the C270 production path through upstream
+`uvcvideo`.
 
 ## Validated baseline
 
@@ -71,14 +72,18 @@ Completed engineering checkpoints and validated functionality are:
   successful 300-buffer runs with EOS and clean teardown
 - Stage 7.3 — real C270 GStreamer pipelines: **COMPLETE — FUNCTIONAL
   VALIDATION**, covering raw YUY2 and MJPEG decode paths
+- Stage 7.4 — reusable C++ GStreamer pipeline component: **COMPLETE —
+  FUNCTIONAL VALIDATION**, including packaged BBB execution with the synthetic
+  source and both accepted C270 paths
 
 Stage 6B application functionality, documentation, Buildroot integration,
 clean image generation, and packaged BBB/C270 validation are **PASS**. YUYV
 640x480 at 30 fps remains unstable under the current USB topology, and
 long-term USB stability remains **DEFERRED** without a proven root cause.
 
-Stage 7 is **IN PROGRESS**. Synthetic and real-camera functional pipelines are
-validated; the Stage 7.4 C++ GStreamer component remains **PENDING**.
+Stage 7 is **IN PROGRESS**. Synthetic and real-camera functional pipelines and
+the Stage 7.4 C++ component are validated. Stage 7.5 remains **PENDING**; its
+product scope is not defined by this checkpoint.
 
 C270 USB resets and inconsistent real throughput remain tracked as
 [STAGE7-USB-01](docs/validation/stage-07-gstreamer-integration.md). Stable
@@ -123,7 +128,8 @@ camera frames do not belong in this repository.
 | Stage 7.1 — GStreamer Buildroot bring-up | **COMPLETE** |
 | Stage 7.2 — synthetic V4L2 pipeline | **COMPLETE** |
 | Stage 7.3 — real C270 pipelines | **COMPLETE — FUNCTIONAL VALIDATION** |
-| Stage 7.4 — C++ GStreamer pipeline component | **PENDING** |
+| Stage 7.4 — C++ GStreamer pipeline component | **COMPLETE — FUNCTIONAL VALIDATION** |
+| Stage 7.5 — scope pending owner definition | **PENDING** |
 | Stage 7 — GStreamer integration | **IN PROGRESS** |
 
 Stage 6 is complete. Stage 7 is in progress and must preserve the upstream
