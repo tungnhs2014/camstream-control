@@ -2,12 +2,13 @@
 
 ## Checkpoint status
 
-- Validation date: 2026-07-28
+- Validation dates: 2026-07-28 through 2026-07-29
 - Branch: `stage/07-gstreamer-integration`
 - Stage 7.1 — GStreamer Buildroot bring-up: **COMPLETE**
 - Stage 7.2 — Synthetic V4L2 GStreamer pipeline: **COMPLETE**
 - Stage 7.3 — Real C270 GStreamer pipelines: **COMPLETE — FUNCTIONAL VALIDATION**
-- Stage 7.4 — C++ GStreamer pipeline component: **PENDING**
+- Stage 7.4 — C++ GStreamer pipeline component: **COMPLETE — FUNCTIONAL VALIDATION**
+- Stage 7.5 — scope pending owner definition: **PENDING**
 - Stage 7: **IN PROGRESS**
 
 ## Buildroot configuration
@@ -28,6 +29,7 @@ existing CamStream packages remain enabled:
 
 ```text
 BR2_PACKAGE_CAMSTREAM_CAPTURE=y
+BR2_PACKAGE_CAMSTREAM_GST_TEST=y
 BR2_PACKAGE_CAMSTREAM_VIDEO=y
 ```
 
@@ -213,8 +215,131 @@ established.
 
 Stage 7.3 is **COMPLETE — FUNCTIONAL VALIDATION**. It does not establish
 stable 30-fps throughput, zero-copy operation, crop support, or long-term USB
-reliability. Stage 7.4 remains **PENDING**, and Stage 7 remains
+reliability. Stage 7.4 is validated separately below, and Stage 7 remains
 **IN PROGRESS**.
+
+## Stage 7.4 — Reusable C++ GStreamer Pipeline Component
+
+### Implementation and build evidence
+
+Stage 7.4 added a reusable C++17 component built on the native GStreamer C
+API and the finite-run `camstream-gst-test` diagnostic CLI. It supports:
+
+```text
+YUY2:  v4l2src -> capsfilter(video/x-raw, YUY2) -> fakesink
+MJPEG: v4l2src -> capsfilter(image/jpeg) -> jpegdec -> videoconvert -> fakesink
+```
+
+The component exposes explicit `build()`, `start()`, `wait()`, and `stop()`
+lifecycle operations. It owns the pipeline and bus references, relies on bin
+ownership for successfully added elements, releases parsed error data and bus
+messages exactly once, transitions to `GST_STATE_NULL` before final release,
+and makes cleanup after partial construction deterministic and idempotent. The
+bus wait is bounded by the nominal finite-buffer duration plus a project
+120-second stall allowance.
+
+The focused application Makefile preserves the project C++17 and warning
+policy. The Buildroot generic package uses the target compiler, target make
+environment, and staging `pkg-config` metadata. A final incremental image
+build passed, and the target root filesystem contained:
+
+```text
+/usr/bin/camstream-gst-test
+```
+
+The installed binary was inspected as a 32-bit little-endian ARM EABI5
+hard-float executable.
+
+The `cpp-quality-reviewer`, `gstreamer-reviewer`, and `bsp-reviewer` approved
+the final source/build checkpoint after generated-binary protection, explicit
+`videoconvert` dependency coverage, and bounded terminal-wait handling were
+reviewed. The pinned Buildroot 2026.02.3 `utils/check-package` execution was
+**NOT RUN** because its host Python `magic` dependency was unavailable. Its
+validation result is **NOT TESTED**, it is non-blocking for Stage 7.4, and its
+follow-up is deferred to Stage 7.5 when the dependency is available.
+
+### BeagleBone Black runtime evidence
+
+The final image exposed the required `v4l2src`, `jpegdec`, `videoconvert`, and
+`fakesink` factories. The CLI rejected invalid format, a missing required
+option, and a malformed number with exit status 2. A nonexistent device
+produced a controlled construction/state failure with exit status 1.
+
+The synthetic node was identified dynamically and exercised with:
+
+```sh
+camstream-gst-test \
+    --device "$CAMSTREAM_NODE" \
+    --format yuy2 \
+    --width 640 --height 480 --fps 30 \
+    --buffers 300 --sync false
+```
+
+The pipeline reached PLAYING, processed the finite run, received EOS, and
+returned exit status 0 in approximately 10.12 seconds. Three consecutive
+lifecycle runs completed successfully, after which the synthetic module
+unloaded and removed its dynamic node cleanly.
+
+Initial real-camera attempts used `/dev/video1`. Subsequent enumeration showed
+that this node exposed Metadata Capture rather than image-capture formats, so
+those attempts are invalid and are not acceptance evidence. The corrected
+discovery enumerated the actual formats of every candidate node and selected
+`/dev/video0` during the tested session because it exposed the C270 YUYV and
+MJPG capture formats. `/dev/video0` is an observed session value, not a fixed
+device-number ABI.
+
+The corrected C270 runs used:
+
+```sh
+camstream-gst-test \
+    --device "$C270_NODE" \
+    --format yuy2 \
+    --width 320 --height 240 --fps 30 \
+    --buffers 300 --sync false
+
+camstream-gst-test \
+    --device "$C270_NODE" \
+    --format mjpeg \
+    --width 640 --height 480 --fps 30 \
+    --buffers 300 --sync false
+```
+
+The YUY2 run reached PLAYING and EOS, returned status 0, and completed in
+approximately 16.63 seconds. The MJPEG-decode run also reached PLAYING and
+EOS, returned status 0, and completed in approximately 21.62 seconds. One C270
+USB reset occurred inside each bounded real-camera test window. Both pipelines
+recovered and completed; no kernel Oops, BUG, use-after-free, list corruption,
+or fatal GStreamer error was observed.
+
+### Acceptance and limits
+
+| Check | Result |
+| --- | --- |
+| Reusable native-API C++17 component | **PASS** |
+| YUY2 and MJPEG-decode graph construction | **PASS** |
+| RAII cleanup and bounded bus wait | **PASS** |
+| Buildroot target package build | **PASS** |
+| Final incremental Buildroot image build | **PASS** |
+| ARM hard-float binary in `/usr/bin` | **PASS** |
+| Required target GStreamer factories | **PASS** |
+| CLI negative-path exit behavior | **PASS** |
+| Synthetic YUY2 finite run | **PASS** |
+| Three repeated synthetic lifecycles | **PASS** |
+| Synthetic module unload cleanup | **PASS** |
+| Initial `/dev/video1` C270 attempts | **NOT TESTED — invalid metadata node; excluded from acceptance** |
+| Corrected C270 YUY2 finite run | **PASS — FUNCTIONAL** |
+| Corrected C270 MJPEG-decode finite run | **PASS — FUNCTIONAL** |
+| Fatal kernel or GStreamer error | **NONE OBSERVED** |
+| Buildroot `utils/check-package` | **NOT TESTED — execution deferred to Stage 7.5; host `magic` unavailable** |
+| Stable delivered 30 fps | **DEFERRED — STAGE7-USB-01** |
+| Long-duration USB reliability | **DEFERRED — STAGE7-USB-01** |
+
+Stage 7.4 is **COMPLETE — FUNCTIONAL VALIDATION**. Requested or negotiated
+30/1 caps and finite EOS completion do not establish stable delivered 30 fps.
+The bounded runs do not establish long-duration USB reliability, and the USB
+resets are not causally attributed to GStreamer. CMake migration remains
+outside Stage 7.4. Stage 7.5 is **PENDING** with product scope awaiting owner
+definition, and Stage 7 remains **IN PROGRESS**.
 
 ## Deferred platform issue — C270 USB stability and throughput
 

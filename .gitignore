@@ -18,6 +18,7 @@ compile_commands.json
 
 # Project application binaries
 /apps/camstream-capture/camstream-capture
+/apps/camstream-gst-test/camstream-gst-test
 
 # Generated images
 *.img

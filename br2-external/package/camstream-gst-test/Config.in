@@ -1,0 +1,11 @@
+config BR2_PACKAGE_CAMSTREAM_GST_TEST
+	bool "camstream-gst-test"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_PACKAGE_GSTREAMER1
+	depends on BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_VIDEOCONVERTSCALE
+	depends on BR2_PACKAGE_GST1_PLUGINS_GOOD
+	depends on BR2_PACKAGE_GST1_PLUGINS_GOOD_JPEG
+	depends on BR2_PACKAGE_GST1_PLUGINS_GOOD_PLUGIN_V4L2
+	help
+	  Reusable native-GStreamer V4L2 pipeline component and finite
+	  diagnostic CLI for CamStream Control.
