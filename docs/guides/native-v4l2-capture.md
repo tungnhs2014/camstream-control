@@ -24,7 +24,7 @@ The application is under `apps/camstream-capture/`:
 | `CaptureConfig` | Validated device, format, dimensions, FPS, skip/count, and output request |
 | `V4l2Device` | Owns the device descriptor, driver buffer pool, mappings, streaming state, ioctls, capture loop, and explicit cleanup |
 | `MappedBuffer` | Move-only RAII owner for one successful `mmap()` mapping |
-| `Makefile` | C++17 host or cross build with `-Wall -Wextra -Wpedantic` |
+| `CMakeLists.txt` | C++17 executable target with `-Wall -Wextra -Wpedantic` |
 
 `V4l2Device` is neither copyable nor movable, so one object remains the stable
 owner of the descriptor and capture resources. Each `MappedBuffer` unmaps its
@@ -161,13 +161,16 @@ reuse the example values for a differently negotiated file.
 
 ## 8. Host build
 
-Build the native host diagnostic with the default compiler:
+Configure and build the native host diagnostic from the repository root:
 
 ```sh
-make -C apps/camstream-capture clean
-make -C apps/camstream-capture
-file apps/camstream-capture/camstream-capture
-apps/camstream-capture/camstream-capture --help
+cmake -S . -B build-cmake -G Ninja \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DCAMSTREAM_BUILD_CAPTURE=ON \
+  -DCAMSTREAM_BUILD_GST_TEST=OFF
+cmake --build build-cmake --target camstream-capture
+file build-cmake/apps/camstream-capture/camstream-capture
+build-cmake/apps/camstream-capture/camstream-capture --help
 ```
 
 An x86-64 host build validates compilation and CLI error paths, but it is not
@@ -179,9 +182,9 @@ validate real capture.
 The final Stage 6B integration path is:
 
 ```text
-apps/camstream-capture
+repository root CMake project
   -> Buildroot camstream-capture package
-  -> TARGET_CXX
+  -> Buildroot CMake toolchain integration
   -> target root filesystem
   -> /usr/bin/camstream-capture
   -> BeagleBone Black + Logitech C270
@@ -195,11 +198,13 @@ br2-external/package/camstream-capture/
 └── camstream-capture.mk
 ```
 
-`Config.in` requires C++ support. `camstream-capture.mk` takes source from
-`apps/camstream-capture` and uses Buildroot's `TARGET_MAKE_ENV` and
-`TARGET_CONFIGURE_OPTS`, including `TARGET_CXX` and target build flags. It
-installs the result as `/usr/bin/camstream-capture`. The saved project
-configuration retains `BR2_PACKAGE_CAMSTREAM_CAPTURE=y` in
+`Config.in` requires C++ support. `camstream-capture.mk` uses Buildroot's
+`cmake-package` infrastructure with the repository root as its local source.
+It enables `CAMSTREAM_BUILD_CAPTURE`, disables `CAMSTREAM_BUILD_GST_TEST`, and
+relies on Buildroot's generated CMake toolchain integration for the compiler,
+sysroot, target flags, and `/usr` prefix. It installs only
+`/usr/bin/camstream-capture`. The saved project configuration retains
+`BR2_PACKAGE_CAMSTREAM_CAPTURE=y` in
 `br2-external/configs/beaglebone_defconfig`.
 
 Buildroot source, project integration, and generated build output are distinct:
@@ -222,38 +227,23 @@ The clean project build, generated image, boot, packaged binary, and packaged
 BBB/C270 runtime were manually validated for the Stage 6B closure. Generated
 output remains outside the repository.
 
-### Development-only cross build and deployment
+### Focused package rebuild and development deployment
 
-The earlier manual workflow remains useful for focused development before a
-full image rebuild:
+Use the Buildroot package target for a focused cross build before a full image
+rebuild:
 
 ```sh
 export REPO="$HOME/TungNHS/camstream-control"
 export WORKSPACE="$HOME/TungNHS/camstream-workspace"
 export BUILDROOT="$WORKSPACE/sources/buildroot-2026.02.3"
 export BR2_EXTERNAL="$REPO/br2-external"
+export OUTPUT="$WORKSPACE/output/stage06-camera-v4l2"
 
-test -d "$BUILDROOT"
-test -d "$BR2_EXTERNAL"
-find "$WORKSPACE" -path '*/host/bin/*-g++' -print
-```
-
-Build outputs are generated workspace state and may use different stage/output
-directory names. During the final Stage 6B inspection, the compiler actually
-used by this work was found under the `stage06-camera-v4l2` output as
-`host/bin/arm-linux-g++`; that output name is recorded evidence, not a project
-path contract. Select the verified result explicitly rather than assuming it:
-
-```sh
-export CAMSTREAM_CXX="/absolute/path/reported/by/find/to/arm-linux-g++"
-test -x "$CAMSTREAM_CXX"
-"$CAMSTREAM_CXX" --version
-
-make -C "$REPO/apps/camstream-capture" clean
-make -C "$REPO/apps/camstream-capture" \
-  CXX="$CAMSTREAM_CXX"
-
-file "$REPO/apps/camstream-capture/camstream-capture"
+make -C "$BUILDROOT" O="$OUTPUT" BR2_EXTERNAL="$BR2_EXTERNAL" \
+  camstream-capture-dirclean
+make -C "$BUILDROOT" O="$OUTPUT" BR2_EXTERNAL="$BR2_EXTERNAL" \
+  camstream-capture
+file "$OUTPUT/target/usr/bin/camstream-capture"
 ```
 
 The expected identity is a 32-bit little-endian ARM EABI5 executable using the
@@ -262,7 +252,7 @@ hard-float ABI. Do not copy a host x86-64 binary to the target.
 For a development-only target check, deploy the ARM binary manually:
 
 ```sh
-scp "$REPO/apps/camstream-capture/camstream-capture" \
+scp "$OUTPUT/target/usr/bin/camstream-capture" \
   root@TARGET_IP:/tmp/camstream-capture
 
 ssh root@TARGET_IP \
