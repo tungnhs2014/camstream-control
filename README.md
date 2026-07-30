@@ -8,7 +8,7 @@ USB UVC camera.
 
 ## Architecture
 
-Production multimedia path:
+Planned production multimedia path:
 
 ```text
 Logitech C270
@@ -18,7 +18,7 @@ Logitech C270
   -> Network Streaming
 ```
 
-Control path:
+Planned control path:
 
 ```text
 IPC Client
@@ -77,6 +77,8 @@ Completed engineering checkpoints and validated functionality are:
   source and both accepted C270 paths
 - Stage 7.5 — final Buildroot and artifact acceptance: **COMPLETE — FINAL
   ACCEPTANCE**
+- Stage 8.0 — userspace CMake foundation: **COMPLETE**, including host and
+  Buildroot validation plus accepted BBB behavior-preservation smoke tests
 
 Stage 6B application functionality, documentation, Buildroot integration,
 clean image generation, and packaged BBB/C270 validation are **PASS**. YUYV
@@ -86,6 +88,12 @@ long-term USB stability remains **DEFERRED** without a proven root cause.
 Stage 7 is **COMPLETE**. Synthetic and real-camera functional pipelines, the
 reusable C++ component, final incremental Buildroot image generation, and the
 focused target-artifact audit passed their acceptance gates.
+
+Stage 8.0 — the userspace CMake foundation — is **COMPLETE**. The migration
+introduces a target-based CMake build for `camstream-capture`,
+`camstream-gst-test`, and the reusable static `camstream-gstreamer` library.
+Source equivalence, host CLI behavior, Buildroot integration, and finite BBB
+behavior-preservation smoke tests passed. Stage 8.1 is **NEXT**.
 
 C270 USB resets and inconsistent real throughput remain tracked as
 [STAGE7-USB-01](docs/validation/stage-07-gstreamer-integration.md). Stable
@@ -102,6 +110,7 @@ production 30-fps operation and long-term USB reliability are not yet claimed.
 - [Stage 6B native application validation](docs/validation/stage-06b-native-v4l2-app.md)
 - [Stage 6C synthetic driver validation](docs/validation/stage-06c-synthetic-v4l2-driver.md)
 - [Stage 7 GStreamer validation](docs/validation/stage-07-gstreamer-integration.md)
+- [Stage 8.0 userspace CMake foundation](docs/validation/stage-08-userspace-cmake-foundation.md)
 
 Guides explain the reproducible project flow. Validation reports distinguish
 runtime-tested behavior from enumerated capability and deferred work.
@@ -109,8 +118,10 @@ runtime-tested behavior from enumerated capability and deferred work.
 ## Repository layout
 
 ```text
+CMakeLists.txt  Root userspace CMake project and build-selection options
 br2-external/  Project Buildroot external tree, defconfig, fragments, overlay
 apps/          Project-owned native userspace applications
+libs/          Reusable project-owned userspace libraries
 drivers/       Project-owned kernel drivers
 docs/guides/   Focused engineering bring-up guides
 docs/validation/ Public validation summaries
@@ -133,6 +144,8 @@ camera frames do not belong in this repository.
 | Stage 7.4 — C++ GStreamer pipeline component | **COMPLETE — FUNCTIONAL VALIDATION** |
 | Stage 7.5 — final Buildroot and artifact acceptance | **COMPLETE — FINAL ACCEPTANCE** |
 | Stage 7 — GStreamer integration | **COMPLETE** |
+| Stage 8.0 — userspace CMake foundation | **COMPLETE** |
+| Stage 8.1 — next userspace checkpoint | **NEXT** |
 
-Stages 6 and 7 are complete. Future work must preserve the upstream UVC/V4L2
-baseline and the evidence boundaries recorded above.
+Stages 6, 7, and 8.0 are complete. Stage 8.1 is next. Future work must preserve
+the upstream UVC/V4L2 baseline and the evidence boundaries recorded above.
