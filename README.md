@@ -79,6 +79,8 @@ Completed engineering checkpoints and validated functionality are:
   ACCEPTANCE**
 - Stage 8.0 — userspace CMake foundation: **COMPLETE**, including host and
   Buildroot validation plus accepted BBB behavior-preservation smoke tests
+- Stage 8.1 — camera service skeleton: **COMPLETE**, including host and
+  Buildroot validation plus accepted BBB service-lifecycle smoke tests
 
 Stage 6B application functionality, documentation, Buildroot integration,
 clean image generation, and packaged BBB/C270 validation are **PASS**. YUYV
@@ -93,7 +95,20 @@ Stage 8.0 — the userspace CMake foundation — is **COMPLETE**. The migration
 introduces a target-based CMake build for `camstream-capture`,
 `camstream-gst-test`, and the reusable static `camstream-gstreamer` library.
 Source equivalence, host CLI behavior, Buildroot integration, and finite BBB
-behavior-preservation smoke tests passed. Stage 8.1 is **NEXT**.
+behavior-preservation smoke tests passed. That foundation is the prerequisite
+for the Stage 8.1 service skeleton.
+
+Stage 8.1 adds the minimal foreground `camstream-service` lifecycle with
+synchronous SIGINT/SIGTERM handling through `signalfd` and `poll`. Host
+lifecycle tests, Buildroot packaging, the incremental image, and focused
+target artifacts are validated. BBB runtime dependency resolution, CLI error
+handling, SIGINT/SIGTERM shutdown, repeated lifecycle, and process cleanup
+passed the accepted finite smoke test. Stage 8.1 is **COMPLETE**. The skeleton
+does not yet open a camera or own GStreamer, IPC, networking, recording,
+init-system, or recovery behavior.
+
+Stage 8.2 is **NEXT**: the Camera Service will own and control the existing
+GStreamer pipeline component. That integration is not implemented yet.
 
 C270 USB resets and inconsistent real throughput remain tracked as
 [STAGE7-USB-01](docs/validation/stage-07-gstreamer-integration.md). Stable
@@ -111,6 +126,7 @@ production 30-fps operation and long-term USB reliability are not yet claimed.
 - [Stage 6C synthetic driver validation](docs/validation/stage-06c-synthetic-v4l2-driver.md)
 - [Stage 7 GStreamer validation](docs/validation/stage-07-gstreamer-integration.md)
 - [Stage 8.0 userspace CMake foundation](docs/validation/stage-08-userspace-cmake-foundation.md)
+- [Stage 8.1 camera service skeleton](docs/validation/stage-08.1-camera-service-skeleton.md)
 
 Guides explain the reproducible project flow. Validation reports distinguish
 runtime-tested behavior from enumerated capability and deferred work.
@@ -145,7 +161,9 @@ camera frames do not belong in this repository.
 | Stage 7.5 — final Buildroot and artifact acceptance | **COMPLETE — FINAL ACCEPTANCE** |
 | Stage 7 — GStreamer integration | **COMPLETE** |
 | Stage 8.0 — userspace CMake foundation | **COMPLETE** |
-| Stage 8.1 — next userspace checkpoint | **NEXT** |
+| Stage 8.1 — camera service skeleton | **COMPLETE** |
+| Stage 8.2 — Camera Service owns and controls GStreamer pipeline | **NEXT** |
 
-Stages 6, 7, and 8.0 are complete. Stage 8.1 is next. Future work must preserve
-the upstream UVC/V4L2 baseline and the evidence boundaries recorded above.
+Stages 6, 7, 8.0, and 8.1 are complete. Stage 8.2 is next but remains
+unimplemented. Future work must preserve the upstream UVC/V4L2 baseline and
+the evidence boundaries recorded above.
