@@ -42,14 +42,20 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph Userspace[Target userspace]
+    subgraph TargetUserspace[Target-validated BeagleBone Black userspace components]
         Service[camstream-service]
         Capture[camstream-capture]
         GstTest[camstream-gst-test]
-        PpiTest[camstream-camera-test]
         GstLib[camstream-gstreamer]
+    end
+
+    subgraph HostValidated[Host-validated Stage 8.3 components]
+        PpiTest[camstream-camera-test]
         PPI[camstream-camera-ppi]
         Simulated[simulated camera backend]
+    end
+
+    subgraph Planned[Not implemented in Stage 8.3]
         FutureBackends["V4L2 and libcamera camera backends<br/>planned"]
     end
 
@@ -71,7 +77,9 @@ flowchart TB
 
 Kernel drivers own hardware-facing and V4L2 kernel behavior. Userspace applications own policy, diagnostics, pipeline
 control, and process lifecycle. The Camera PPI adds a userspace portability boundary; it does not replace the kernel
-V4L2 API or the production C270 path.
+V4L2 API or the production C270 path. The Camera PPI core, simulated backend, and diagnostic were validated only on the
+development host in Stage 8.3. They were not integrated into Buildroot or validated on the BeagleBone Black or
+Raspberry Pi.
 
 ## Current and planned components
 
@@ -82,9 +90,9 @@ V4L2 API or the production C270 path.
 | `camstream-service` | Foreground service owning the reusable GStreamer pipeline | Implemented through Stage 8.2 |
 | `camstream-gstreamer` | Shared GStreamer pipeline implementation | Implemented through Stage 8.2 |
 | `camstream-video` | Synthetic kernel V4L2 capture driver | Implemented and target validated |
-| `camstream-camera-ppi` | Stable Camera PPI contract, loader, and C++ session wrapper | Stage 8.3 host validated |
-| simulated camera backend | Hardware-independent Camera PPI implementation | Stage 8.3 host validated |
-| `camstream-camera-test` | Finite Camera PPI lifecycle diagnostic | Stage 8.3 host validated |
+| `camstream-camera-ppi` | Stable Camera PPI contract, loader, and C++ session wrapper | Original Stage 8.3 paths host validated; ownership corrective fix pending owner revalidation |
+| simulated camera backend | Hardware-independent Camera PPI implementation | Stage 8.3 host validated; not target validated |
+| `camstream-camera-test` | Finite Camera PPI lifecycle diagnostic | Stage 8.3 host validated; not target validated |
 | V4L2 camera backend | Camera PPI implementation using Linux V4L2 userspace APIs | Planned, not implemented |
 | libcamera camera backend | Camera PPI implementation using libcamera | Planned, not implemented |
 | IPC and network streaming | External control and production media delivery | Planned |

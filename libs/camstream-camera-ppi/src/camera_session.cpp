@@ -6,11 +6,17 @@
 #include <array>
 #include <cstring>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <utility>
 #include <vector>
 
 namespace camstream::camera {
+
+namespace detail {
+class CameraSessionIdentity final {};
+}
+
 namespace {
 
 constexpr std::size_t kDiagnosticBufferSize = 256U;
@@ -150,7 +156,8 @@ void validate_ppi_frame(const camstream_camera_frame_v1& frame) {
 
 class CameraSession::Impl final {
   public:
-    explicit Impl(std::unique_ptr<CameraBackendModule> module) : module_(std::move(module)) {}
+    explicit Impl(std::unique_ptr<CameraBackendModule> module)
+        : module_(std::move(module)), owner_identity_(std::make_shared<const detail::CameraSessionIdentity>()) {}
 
     ~Impl() noexcept {
         cleanup();
@@ -183,7 +190,7 @@ class CameraSession::Impl final {
         return {};
     }
 
-    [[noreturn]] void throw_backend_failure(const std::string& operation, camstream_camera_status_t status) const {
+    std::string backend_failure_message(const std::string& operation, camstream_camera_status_t status) const {
         std::ostringstream message;
         message << "Camera backend '" << module_->backend_name() << "' (" << module_->path() << ") operation "
                 << operation << " failed with status " << status;
@@ -191,7 +198,11 @@ class CameraSession::Impl final {
         if (!diagnostic.empty()) {
             message << ": " << diagnostic;
         }
-        throw CameraError(message.str(), status);
+        return message.str();
+    }
+
+    [[noreturn]] void throw_backend_failure(const std::string& operation, camstream_camera_status_t status) const {
+        throw CameraError(backend_failure_message(operation, status), status);
     }
 
     void require_state(SessionState required, const std::string& operation) const {
@@ -203,9 +214,79 @@ class CameraSession::Impl final {
         }
     }
 
+    void require_no_pending_cleanup(const std::string& operation) const {
+        if (pending_cleanup_token_.has_value()) {
+            throw CameraError("Camera operation " + operation +
+                                  " is blocked by an unresolved acquired-frame rollback",
+                              CAMSTREAM_CAMERA_STATUS_INVALID_STATE);
+        }
+    }
+
+    camstream_camera_status_t release_token_noexcept(std::uint64_t token, bool& callback_threw) noexcept {
+        callback_threw = false;
+        try {
+            return backend().release_frame(instance_, token);
+        } catch (...) {
+            callback_threw = true;
+            return CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR;
+        }
+    }
+
+    void rollback_acquired_token(std::uint64_t token, const char* original_failure) {
+        bool callback_threw = false;
+        const camstream_camera_status_t rollback_status = release_token_noexcept(token, callback_threw);
+        if (rollback_status == CAMSTREAM_CAMERA_STATUS_OK) {
+            return;
+        }
+
+        pending_cleanup_token_ = token;
+        std::ostringstream message;
+        message << "Camera acquire_frame failed after backend acquisition: " << original_failure
+                << "; rollback release_frame failed for token " << token;
+        if (callback_threw) {
+            message << " because the backend callback crossed the C ABI with an exception";
+        } else {
+            message << "; " << backend_failure_message("acquire_frame rollback release_frame", rollback_status);
+        }
+        throw CameraError(message.str(), rollback_status);
+    }
+
+    void retry_pending_cleanup_or_throw(const std::string& operation) {
+        if (!pending_cleanup_token_.has_value()) {
+            return;
+        }
+
+        bool callback_threw = false;
+        const camstream_camera_status_t status = release_token_noexcept(*pending_cleanup_token_, callback_threw);
+        if (status != CAMSTREAM_CAMERA_STATUS_OK) {
+            if (callback_threw) {
+                throw CameraError("Camera operation " + operation +
+                                      " could not resolve pending frame cleanup because release_frame crossed the "
+                                      "C ABI with an exception",
+                                  CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR);
+            }
+            throw_backend_failure(operation + " pending cleanup release_frame", status);
+        }
+        pending_cleanup_token_.reset();
+    }
+
     void cleanup() noexcept {
         if (module_ == nullptr || instance_ == nullptr) {
             return;
+        }
+
+        if (pending_cleanup_token_.has_value()) {
+            bool callback_threw = false;
+            const camstream_camera_status_t status = release_token_noexcept(*pending_cleanup_token_, callback_threw);
+            if (status == CAMSTREAM_CAMERA_STATUS_OK) {
+                pending_cleanup_token_.reset();
+            } else {
+                std::cerr << "Error: camera pending frame cleanup failed with status " << status;
+                if (callback_threw) {
+                    std::cerr << " after release_frame crossed the C ABI with an exception";
+                }
+                std::cerr << '\n';
+            }
         }
 
         for (auto token = outstanding_tokens_.rbegin(); token != outstanding_tokens_.rend(); ++token) {
@@ -241,9 +322,11 @@ class CameraSession::Impl final {
     }
 
     std::unique_ptr<CameraBackendModule> module_;
+    std::shared_ptr<const detail::CameraSessionIdentity> owner_identity_;
     camstream_camera_instance* instance_ = nullptr;
     SessionState state_ = SessionState::Created;
     std::vector<std::uint64_t> outstanding_tokens_;
+    std::optional<std::uint64_t> pending_cleanup_token_;
 };
 
 CameraError::CameraError(std::string message, camstream_camera_status_t status)
@@ -253,10 +336,11 @@ camstream_camera_status_t CameraError::status() const noexcept {
     return status_;
 }
 
-CameraFrame::CameraFrame(const camstream_camera_frame_v1& frame)
-    : frame_token_(frame.frame_token), sequence_number_(frame.sequence_number),
-      monotonic_timestamp_ns_(frame.monotonic_timestamp_ns), width_(frame.width), height_(frame.height),
-      pixel_format_(frame.pixel_format), plane_count_(frame.plane_count) {
+CameraFrame::CameraFrame(const camstream_camera_frame_v1& frame,
+                         std::shared_ptr<const detail::CameraSessionIdentity> owner_identity) noexcept
+    : owner_identity_(std::move(owner_identity)), frame_token_(frame.frame_token),
+      sequence_number_(frame.sequence_number), monotonic_timestamp_ns_(frame.monotonic_timestamp_ns),
+      width_(frame.width), height_(frame.height), pixel_format_(frame.pixel_format), plane_count_(frame.plane_count) {
     for (std::uint32_t index = 0; index < plane_count_; ++index) {
         planes_[index] = {
             frame.planes[index].data,
@@ -303,6 +387,7 @@ const CameraPlane& CameraFrame::plane(std::size_t index) const {
 }
 
 void CameraFrame::invalidate() noexcept {
+    owner_identity_.reset();
     frame_token_ = 0U;
     plane_count_ = 0U;
     for (CameraPlane& plane_view : planes_) {
@@ -419,6 +504,7 @@ void CameraSession::start() {
 
 bool CameraSession::wait_frame(std::uint32_t timeout_ms) {
     implementation_->require_state(SessionState::Started, "wait_frame");
+    implementation_->require_no_pending_cleanup("wait_frame");
     const camstream_camera_status_t status =
         implementation_->backend().wait_frame(implementation_->instance_, timeout_ms);
     if (status == CAMSTREAM_CAMERA_STATUS_TIMEOUT) {
@@ -432,6 +518,7 @@ bool CameraSession::wait_frame(std::uint32_t timeout_ms) {
 
 CameraFrame CameraSession::acquire_frame() {
     implementation_->require_state(SessionState::Started, "acquire_frame");
+    implementation_->require_no_pending_cleanup("acquire_frame");
     camstream_camera_frame_v1 frame{};
     initialize_frame(frame);
     const camstream_camera_status_t status =
@@ -449,20 +536,28 @@ CameraFrame CameraSession::acquire_frame() {
             throw_contract_error("acquire_frame", "backend returned a duplicate frame token");
         }
         implementation_->outstanding_tokens_.push_back(frame.frame_token);
+    } catch (const std::exception& exception) {
+        if (frame.frame_token != 0U) {
+            implementation_->rollback_acquired_token(frame.frame_token, exception.what());
+        }
+        throw;
     } catch (...) {
         if (frame.frame_token != 0U) {
-            static_cast<void>(implementation_->backend().release_frame(implementation_->instance_, frame.frame_token));
+            implementation_->rollback_acquired_token(frame.frame_token, "unknown wrapper exception");
         }
         throw;
     }
 
-    return CameraFrame(frame);
+    return CameraFrame(frame, implementation_->owner_identity_);
 }
 
 void CameraSession::release_frame(CameraFrame& frame) {
     implementation_->require_state(SessionState::Started, "release_frame");
     if (!frame.valid()) {
         throw CameraError("Camera frame is not outstanding", CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT);
+    }
+    if (frame.owner_identity_ != implementation_->owner_identity_) {
+        throw CameraError("Camera frame belongs to a different session", CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT);
     }
 
     const auto token = std::find(implementation_->outstanding_tokens_.begin(),
@@ -486,6 +581,7 @@ void CameraSession::stop() {
         return;
     }
     implementation_->require_state(SessionState::Started, "stop");
+    implementation_->retry_pending_cleanup_or_throw("stop");
     if (!implementation_->outstanding_tokens_.empty()) {
         throw CameraError("Camera stop requires all frames to be released", CAMSTREAM_CAMERA_STATUS_INVALID_STATE);
     }
