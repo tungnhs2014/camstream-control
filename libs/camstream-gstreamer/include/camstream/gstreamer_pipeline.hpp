@@ -17,11 +17,22 @@ enum class GstreamerInputFormat {
 };
 
 /**
- * @brief Complete immutable input contract for one finite pipeline run.
+ * @brief Outcome from nonblocking processing of pending pipeline bus messages.
+ */
+enum class GstreamerBusOutcome {
+    Continue,
+    EndOfStream,
+    Error,
+};
+
+/**
+ * @brief Complete immutable input contract for one camera pipeline run.
  *
  * The caller must provide a nonempty V4L2 device path and positive numeric
- * values representable by GStreamer integer properties. The configuration is
- * copied into GstreamerPipeline and remains unchanged for its lifetime.
+ * dimensions and frame rate representable by GStreamer integer properties.
+ * A zero buffer count selects continuous mode; a positive count selects a
+ * finite run. The configuration is copied into GstreamerPipeline and remains
+ * unchanged for its lifetime.
  */
 struct GstreamerPipelineConfig {
     /** @brief Caller-selected V4L2 capture node; no discovery is performed. */
@@ -34,20 +45,22 @@ struct GstreamerPipelineConfig {
     std::uint32_t height = 0;
     /** @brief Requested integral frame rate. */
     std::uint32_t fps = 0;
-    /** @brief Finite number of source buffers to process before EOS. */
+    /** @brief Source-buffer limit; zero means continuous/unlimited execution. */
     std::uint32_t buffer_count = 0;
     /** @brief Whether fakesink synchronizes buffer delivery to the clock. */
     bool sink_sync = false;
 };
 
 /**
- * @brief Owns one finite native-GStreamer camera pipeline and its bus.
+ * @brief Owns one native-GStreamer camera pipeline and its bus.
  *
  * The class is not thread-safe; one caller must serialize build(), start(),
- * wait(), and stop(). Child elements are owned by GstPipeline after successful
- * bin insertion. This object owns the pipeline and bus references, transitions
- * the pipeline to GST_STATE_NULL before releasing them, and supports repeated
- * stop calls. Destruction performs the same idempotent cleanup fallback.
+ * bus consumption, and stop(). Blocking wait() and service-side bus draining
+ * are alternative consumption modes and must never run concurrently on the
+ * same pipeline. Child elements are owned by GstPipeline after successful bin
+ * insertion. This object owns the pipeline and bus references, transitions the
+ * pipeline to GST_STATE_NULL before releasing them, and supports repeated stop
+ * calls. Destruction performs the same idempotent cleanup fallback.
  */
 class GstreamerPipeline final {
 public:
@@ -101,6 +114,27 @@ public:
     bool wait();
 
     /**
+     * @brief Returns the borrowed GstBus poll descriptor after build().
+     * @return A non-negative descriptor on success; -1 on invalid lifecycle.
+     *
+     * The caller may pass this descriptor to poll(), but must never read from or
+     * close it. GstBus owns the descriptor for the lifetime of the built
+     * pipeline. Readiness must be consumed through drain_bus_messages().
+     */
+    int bus_poll_fd() const noexcept;
+
+    /**
+     * @brief Nonblockingly drains and processes every currently queued message.
+     * @return Continue, EndOfStream, or Error, with Error taking precedence if
+     * multiple terminal messages are drained in one call.
+     *
+     * Requires a successful build(). Every popped message and parsed allocation
+     * is released exactly once. This method must not run concurrently with
+     * wait() or another bus consumer.
+     */
+    GstreamerBusOutcome drain_bus_messages() noexcept;
+
+    /**
      * @brief Transitions to NULL and releases the owned bus and pipeline.
      * @return true when no resources are owned or the NULL transition succeeds.
      *
@@ -116,6 +150,7 @@ private:
     bool configure_source(GstElement* source) const;
     bool configure_sink(GstElement* sink) const;
     bool configure_capsfilter(GstElement* capsfilter) const;
+    GstreamerBusOutcome process_bus_message(GstMessage* message) noexcept;
 
     GstreamerPipelineConfig config_;
     GstElement* pipeline_ = nullptr;
