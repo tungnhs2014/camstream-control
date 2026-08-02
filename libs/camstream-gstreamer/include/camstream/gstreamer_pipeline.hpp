@@ -63,12 +63,12 @@ struct GstreamerPipelineConfig {
  * calls. Destruction performs the same idempotent cleanup fallback.
  */
 class GstreamerPipeline final {
-public:
+  public:
     /**
      * @brief Stores the pipeline configuration without creating resources.
-     * @param config Validated or untrusted configuration checked by build().
+     * @param pipeline_config Validated or untrusted configuration checked by build().
      */
-    explicit GstreamerPipeline(GstreamerPipelineConfig config);
+    explicit GstreamerPipeline(GstreamerPipelineConfig pipeline_config);
 
     /**
      * @brief Stops and releases any resources still owned by this object.
@@ -143,21 +143,20 @@ public:
      */
     bool stop() noexcept;
 
-private:
+  private:
     bool validate_config() const;
-    GstElement* create_and_add_element(const char* factory_name,
-                                       const char* element_name);
+    GstElement* create_and_add_element(const char* factory_name, const char* element_name);
     bool configure_source(GstElement* source) const;
     bool configure_sink(GstElement* sink) const;
     bool configure_capsfilter(GstElement* capsfilter) const;
     GstreamerBusOutcome process_bus_message(GstMessage* message) noexcept;
 
-    GstreamerPipelineConfig config_;
-    GstElement* pipeline_ = nullptr;
-    GstBus* bus_ = nullptr;
-    bool built_ = false;
-    bool started_ = false;
-    bool run_finished_ = false;
+    GstreamerPipelineConfig config;
+    GstElement* pipeline = nullptr;
+    GstBus* bus = nullptr;
+    bool built = false;
+    bool started = false;
+    bool run_finished = false;
 };
 
 } // namespace camstream

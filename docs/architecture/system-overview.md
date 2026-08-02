@@ -90,7 +90,7 @@ Raspberry Pi.
 | `camstream-service` | Foreground service owning the reusable GStreamer pipeline | Implemented through Stage 8.2 |
 | `camstream-gstreamer` | Shared GStreamer pipeline implementation | Implemented through Stage 8.2 |
 | `camstream-video` | Synthetic kernel V4L2 capture driver | Implemented and target validated |
-| `camstream-camera-ppi` | Stable Camera PPI contract, loader, and C++ session wrapper | Original Stage 8.3 paths host validated; ownership corrective fix pending owner revalidation |
+| `camstream-camera-ppi` | Stable Camera PPI contract, loader, and C++ session wrapper | Stage 8.3 complete within its host-validation scope; corrective ownership regression passed |
 | simulated camera backend | Hardware-independent Camera PPI implementation | Stage 8.3 host validated; not target validated |
 | `camstream-camera-test` | Finite Camera PPI lifecycle diagnostic | Stage 8.3 host validated; not target validated |
 | V4L2 camera backend | Camera PPI implementation using Linux V4L2 userspace APIs | Planned, not implemented |

@@ -5,68 +5,53 @@
 
 namespace camstream {
 
-MappedBuffer::MappedBuffer(std::uint32_t index, void* address,
-                           std::size_t length) noexcept
-    : index_(index)
-    , address_(address)
-    , length_(length)
-    , owns_mapping_(true)
-{
-}
+MappedBuffer::MappedBuffer(std::uint32_t v4l2_buffer_index, void* mapping_address, std::size_t mapping_length) noexcept
+    : buffer_index(v4l2_buffer_index), mapped_address(mapping_address), mapped_length(mapping_length),
+      owns_mapping(true) {}
 
-MappedBuffer::~MappedBuffer()
-{
+MappedBuffer::~MappedBuffer() {
     (void)unmap();
 }
 
 MappedBuffer::MappedBuffer(MappedBuffer&& other) noexcept
-    : index_(std::exchange(other.index_, 0))
-    , address_(std::exchange(other.address_, nullptr))
-    , length_(std::exchange(other.length_, 0))
-    , owns_mapping_(std::exchange(other.owns_mapping_, false))
-{
-}
+    : buffer_index(std::exchange(other.buffer_index, 0)), mapped_address(std::exchange(other.mapped_address, nullptr)),
+      mapped_length(std::exchange(other.mapped_length, 0)), owns_mapping(std::exchange(other.owns_mapping, false)) {}
 
-MappedBuffer& MappedBuffer::operator=(MappedBuffer&& other) noexcept
-{
+MappedBuffer& MappedBuffer::operator=(MappedBuffer&& other) noexcept {
     if (this != &other) {
-        std::swap(index_, other.index_);
-        std::swap(address_, other.address_);
-        std::swap(length_, other.length_);
-        std::swap(owns_mapping_, other.owns_mapping_);
+        std::swap(buffer_index, other.buffer_index);
+        std::swap(mapped_address, other.mapped_address);
+        std::swap(mapped_length, other.mapped_length);
+        std::swap(owns_mapping, other.owns_mapping);
     }
     return *this;
 }
 
-bool MappedBuffer::unmap() noexcept
-{
-    if (!owns_mapping_) {
+bool MappedBuffer::unmap() noexcept {
+    if (!owns_mapping) {
         return true;
     }
 
-    if (munmap(address_, length_) == -1) {
+    if (munmap(mapped_address, mapped_length) == -1) {
         return false;
     }
 
-    address_ = nullptr;
-    length_ = 0;
-    owns_mapping_ = false;
+    mapped_address = nullptr;
+    mapped_length = 0;
+    owns_mapping = false;
     return true;
 }
 
-const std::byte* MappedBuffer::data() const noexcept
-{
-    return owns_mapping_ ? static_cast<const std::byte*>(address_) : nullptr;
+const std::byte* MappedBuffer::data() const noexcept {
+    return owns_mapping ? static_cast<const std::byte*>(mapped_address) : nullptr;
 }
 
-std::uint32_t MappedBuffer::index() const noexcept
-{
-    return index_;
+std::uint32_t MappedBuffer::index() const noexcept {
+    return buffer_index;
 }
 
-std::size_t MappedBuffer::length() const noexcept
-{
-    return length_;
+std::size_t MappedBuffer::length() const noexcept {
+    return mapped_length;
 }
 
 } // namespace camstream

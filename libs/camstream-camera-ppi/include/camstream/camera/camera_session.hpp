@@ -24,15 +24,15 @@ class CameraError final : public std::runtime_error {
     /**
      * @brief Creates an error with its originating PPI status.
      * @param message Complete diagnostic context suitable for logging.
-     * @param status C-compatible status returned by the failed operation.
+     * @param originating_status C-compatible status returned by the failed operation.
      */
-    CameraError(std::string message, camstream_camera_status_t status);
+    CameraError(std::string message, camstream_camera_status_t originating_status);
 
     /** @brief Returns the originating PPI status. */
     camstream_camera_status_t status() const noexcept;
 
   private:
-    camstream_camera_status_t status_;
+    camstream_camera_status_t error_status;
 };
 
 /** @brief Platform-neutral camera stream request or active configuration. */
@@ -114,18 +114,18 @@ class CameraFrame final {
     friend class CameraSession;
 
     CameraFrame(const camstream_camera_frame_v1& frame,
-                std::shared_ptr<const detail::CameraSessionIdentity> owner_identity) noexcept;
+                std::shared_ptr<const detail::CameraSessionIdentity> session_identity) noexcept;
     void invalidate() noexcept;
 
-    std::shared_ptr<const detail::CameraSessionIdentity> owner_identity_;
-    std::uint64_t frame_token_ = 0;
-    std::uint64_t sequence_number_ = 0;
-    std::uint64_t monotonic_timestamp_ns_ = 0;
-    std::uint32_t width_ = 0;
-    std::uint32_t height_ = 0;
-    std::uint32_t pixel_format_ = 0;
-    std::uint32_t plane_count_ = 0;
-    std::array<CameraPlane, CAMSTREAM_CAMERA_MAX_PLANES> planes_{};
+    std::shared_ptr<const detail::CameraSessionIdentity> owner_identity;
+    std::uint64_t frame_token = 0;
+    std::uint64_t frame_sequence_number = 0;
+    std::uint64_t capture_timestamp_ns = 0;
+    std::uint32_t frame_width = 0;
+    std::uint32_t frame_height = 0;
+    std::uint32_t frame_pixel_format = 0;
+    std::uint32_t frame_plane_count = 0;
+    std::array<CameraPlane, CAMSTREAM_CAMERA_MAX_PLANES> plane_views{};
 };
 
 /**
@@ -214,9 +214,9 @@ class CameraSession final {
   private:
     class Impl;
 
-    explicit CameraSession(std::unique_ptr<Impl> implementation) noexcept;
+    explicit CameraSession(std::unique_ptr<Impl> session_implementation) noexcept;
 
-    std::unique_ptr<Impl> implementation_;
+    std::unique_ptr<Impl> implementation;
 };
 
 } // namespace camstream::camera

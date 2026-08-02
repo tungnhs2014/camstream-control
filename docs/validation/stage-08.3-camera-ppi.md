@@ -8,9 +8,17 @@ board runtime validation.
 
 ## Post-validation corrective status
 
-A post-validation code review identified a cross-session frame-ownership gap. A corrective fix is pending owner
-revalidation. The original validation results below remain valid only for the paths actually exercised and do not mark
-the corrective path as `PASS`.
+A post-validation code review identified and corrected a cross-session frame-ownership gap. Owner-provided corrective
+validation passed for cross-session ownership, ASan/UBSan, and Valgrind. The correction did not change the Camera PPI C
+ABI or backend ABI.
+
+| Corrective check | Result |
+| --- | --- |
+| Cross-session ownership regression | **PASS** |
+| ASan/UBSan corrective validation | **PASS** |
+| Valgrind corrective validation | **PASS** |
+| C ABI changes | **NONE** |
+| Backend ABI changes | **NONE** |
 
 ## Validation environment
 
@@ -67,7 +75,7 @@ The diagnostic completed 100 frames with exit code 0.
 | ASan errors | 0 |
 | LeakSanitizer reports | 0 |
 | UBSan reports | 0 |
-| Sanitized runtime | **PASS** |
+| Corrective ASan/UBSan validation | **PASS** |
 
 These results apply only to the exercised paths. Sanitizers do not prove the absence of all memory or undefined-behavior
 defects.
@@ -83,7 +91,7 @@ only open descriptors at exit were the three standard descriptors.
 | Indirect leaks | 0 |
 | Unexpected file-descriptor leaks | 0 |
 | Valgrind errors | 0 |
-| Memcheck validation | **PASS** |
+| Corrective Valgrind validation | **PASS** |
 
 ## Repeated lifecycle
 
@@ -113,6 +121,7 @@ This validation proves that the exercised implementation:
 - succeeds at ABI version validation;
 - completes the `CameraSession` lifecycle;
 - completes frame acquire/release ownership for the tested frames;
+- rejects cross-session frame release without invoking the wrong backend or invalidating the originating frame;
 - returns the documented exit codes for the tested failure paths;
 - shows no sanitizer findings on the tested paths;
 - shows no Valgrind memory or file-descriptor leaks on the tested path;
@@ -137,4 +146,5 @@ This validation does not prove:
 
 **STAGE 8.3 HOST VALIDATION: PASS**
 
-Stage 8.3 Camera PPI Core is complete within its defined host-only scope.
+Stage 8.3 Camera PPI Core is **COMPLETE** within its documented host-validation scope. Buildroot cross-build and
+hardware-target validation remain outside this completed host scope.

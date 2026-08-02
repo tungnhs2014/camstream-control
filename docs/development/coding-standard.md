@@ -9,11 +9,39 @@ explicit ownership, and strict C ABI design. The project does **not** claim MISR
 
 - Use C++17 for project-owned userspace C++.
 - Format project-owned userspace C and C++ with the root `.clang-format`.
-- Use spaces rather than tabs and a maximum line length of 120 columns.
+- Use four spaces rather than tabs and a maximum line length of 120 columns.
+- Use attached braces, left-aligned pointers and references, the include ordering produced by `.clang-format`, and one
+  blank line between logical sections.
 - Keep short declarations on one line when readable. Once a declaration becomes multiline, put one parameter on each
   line and do not bin-pack remaining parameters.
 - Apply formatting only to the files in scope for the change; avoid unrelated repository-wide churn.
 - Keep target-based CMake configuration and target-scoped compile features, include directories, warnings, and links.
+
+### Naming
+
+| Identifier | Convention | Example |
+| --- | --- | --- |
+| Class, C++ struct, `enum class`, public C++ type | `PascalCase` | `CameraSession` |
+| Function and method | `snake_case` | `release_frame()` |
+| Local variable | `snake_case` | `rollback_status` |
+| Function parameter | `snake_case` | `backend_module` |
+| Private data member | `snake_case` without a trailing underscore | `owner_identity` |
+| Internal C++ constant | `kPascalCase` | `kDiagnosticBufferSize` |
+| Macro | `SCREAMING_SNAKE_CASE` | `CAMSTREAM_CAMERA_ABI_VERSION_V1` |
+| C enum constant | Prefixed `SCREAMING_SNAKE_CASE` | `CAMSTREAM_CAMERA_STATUS_OK` |
+| C ABI symbol or type | Prefixed `snake_case` | `camstream_camera_frame_v1` |
+
+Private C++ members do not use a trailing underscore or prefixes such as `m_`, `m`, `this_`, or `private_`. When a
+constructor or method parameter would collide with a member name, give the parameter a role-specific name:
+
+```cpp
+explicit Impl(std::unique_ptr<CameraBackendModule> backend_module)
+    : module(std::move(backend_module)) {}
+```
+
+Rename an identifier only when its role is genuinely unclear. Standard, locally clear domain abbreviations such as
+`fd`, `id`, `api`, `abi`, `ctx`, `cfg`, `src`, `dst`, `buf`, `ret`, `rc`, `argc`, `argv`, `fps`, `pts`, and `dts` may be
+retained.
 
 ### Initialization and types
 
@@ -67,7 +95,22 @@ explicit ownership, and strict C ABI design. The project does **not** claim MISR
 ## Kernel code
 
 Code under `drivers/` follows Linux kernel coding style and kernel ownership, locking, and error-handling conventions. It
-is not reformatted with the userspace `.clang-format` rules.
+is not reformatted with the userspace `.clang-format` rules. Kernel code uses tabs for indentation, K&R braces,
+`snake_case`, established kernel abbreviations, normal `goto` cleanup paths, and the appropriate kernel logging helper.
+Project-owned global symbols, structures, and major helpers use a `camstream_` prefix where needed to avoid namespace
+collisions. Comments and kernel-doc explain ownership, locking, lifetime, framework constraints, or non-obvious error
+handling rather than restating straightforward code.
 
-`checkpatch.pl` is the relevant style-check keyword for project kernel changes. Run it with the selected kernel source
-and project policy when reviewing a kernel patch; it was not run as part of this Stage 8.3 userspace cleanup.
+`checkpatch.pl` is the relevant style checker for project kernel changes. Run it with the pinned kernel source and
+project policy when the validation scope permits it.
+
+## CMake, Buildroot, shell, and Markdown
+
+- **CMake:** keep target-based declarations grouped consistently, use four-space indentation, and format multiline
+  commands without changing option defaults, dependencies, visibility, link order, or install behavior.
+- **Buildroot:** follow upstream `Config.in`, package `.mk`, help-text, continuation, and package-prefix conventions.
+  Do not apply C/C++ formatting tools to Buildroot files.
+- **Shell:** use consistent four-space indentation, quote expansions according to their intended word-splitting
+  behavior, and keep conditions and functions readable. Do not add shell strict-mode options when they could change
+  existing exit behavior.
+- **Markdown:** edit structure and wrapping manually. Do not apply blind repository-wide formatting.

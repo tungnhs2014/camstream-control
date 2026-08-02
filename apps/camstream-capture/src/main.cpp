@@ -15,10 +15,8 @@ constexpr std::uint32_t kDefaultHeight = 480;
 constexpr std::uint32_t kDefaultSkipFrameCount = 0;
 constexpr std::uint32_t kDefaultFrameCount = 10;
 
-void print_usage(const char* program)
-{
-    std::cout << "Usage: " << program
-              << " [--device <path>] [--format <MJPG|YUYV>]\n"
+void print_usage(const char* program) {
+    std::cout << "Usage: " << program << " [--device <path>] [--format <MJPG|YUYV>]\n"
               << "       [--width <pixels>] [--height <pixels>] [--fps <rate>]\n"
               << "       [--skip <frames>] [--count <frames>] [--output <path>]\n"
               << "       [--help]\n"
@@ -26,13 +24,10 @@ void print_usage(const char* program)
               << "Query and validate a V4L2 video-capture device.\n"
               << "\n"
               << "Options:\n"
-              << "  --device <path>  V4L2 device node (default: "
-              << kDefaultDevice << ")\n"
+              << "  --device <path>  V4L2 device node (default: " << kDefaultDevice << ")\n"
               << "  --format <name>  Negotiate MJPG or YUYV capture format\n"
-              << "  --width <pixels> Requested width with --format (default: "
-              << kDefaultWidth << ")\n"
-              << "  --height <pixels> Requested height with --format (default: "
-              << kDefaultHeight << ")\n"
+              << "  --width <pixels> Requested width with --format (default: " << kDefaultWidth << ")\n"
+              << "  --height <pixels> Requested height with --format (default: " << kDefaultHeight << ")\n"
               << "  --fps <rate>      Requested positive integer frame rate\n"
               << "  --skip <frames>   Valid frames to skip with --format "
               << "(default: " << kDefaultSkipFrameCount << ")\n"
@@ -42,8 +37,7 @@ void print_usage(const char* program)
               << "  --help           Show this help text\n";
 }
 
-bool parse_positive_integer(const std::string& text, std::uint32_t& value)
-{
+bool parse_positive_integer(const std::string& text, std::uint32_t& value) {
     if (text.empty()) {
         return false;
     }
@@ -51,12 +45,10 @@ bool parse_positive_integer(const std::string& text, std::uint32_t& value)
     const char* begin = text.data();
     const char* end = begin + text.size();
     const auto result = std::from_chars(begin, end, value);
-    return result.ec == std::errc {} && result.ptr == end && value != 0;
+    return result.ec == std::errc{} && result.ptr == end && value != 0;
 }
 
-bool parse_non_negative_integer(const std::string& text,
-                                std::uint32_t& value)
-{
+bool parse_non_negative_integer(const std::string& text, std::uint32_t& value) {
     if (text.empty()) {
         return false;
     }
@@ -64,11 +56,10 @@ bool parse_non_negative_integer(const std::string& text,
     const char* begin = text.data();
     const char* end = begin + text.size();
     const auto result = std::from_chars(begin, end, value);
-    return result.ec == std::errc {} && result.ptr == end;
+    return result.ec == std::errc{} && result.ptr == end;
 }
 
-int run_capture(const camstream::CaptureConfig& config, bool has_format)
-{
+int run_capture(const camstream::CaptureConfig& config, bool has_format) {
     camstream::V4l2Device device(config.device);
     bool operation_succeeded = device.is_open();
 
@@ -96,9 +87,7 @@ int run_capture(const camstream::CaptureConfig& config, bool has_format)
             operation_succeeded = stream_started;
         }
         if (operation_succeeded) {
-            operation_succeeded = device.capture_frames(config.frame_count,
-                                                        config.skip_frames,
-                                                        config.output_path);
+            operation_succeeded = device.capture_frames(config.frame_count, config.skip_frames, config.output_path);
         }
         if (stream_started) {
             const bool stop_succeeded = device.stop_streaming();
@@ -117,9 +106,8 @@ int run_capture(const camstream::CaptureConfig& config, bool has_format)
 
 } // namespace
 
-int main(int argc, char* argv[])
-{
-    camstream::CaptureConfig config {
+int main(int argc, char* argv[]) {
+    camstream::CaptureConfig config{
         kDefaultDevice,
         0,
         kDefaultWidth,
@@ -172,8 +160,7 @@ int main(int argc, char* argv[])
             } else if (format == "YUYV") {
                 config.pixel_format = V4L2_PIX_FMT_YUYV;
             } else {
-                std::cerr << "Error: unsupported format '" << format
-                          << "'; expected MJPG or YUYV\n";
+                std::cerr << "Error: unsupported format '" << format << "'; expected MJPG or YUYV\n";
                 return 2;
             }
             has_format = true;
@@ -182,16 +169,14 @@ int main(int argc, char* argv[])
 
         if (argument == "--width" || argument == "--height") {
             if (index + 1 >= argc) {
-                std::cerr << "Error: " << argument
-                          << " requires a positive pixel count\n";
+                std::cerr << "Error: " << argument << " requires a positive pixel count\n";
                 return 2;
             }
 
             const std::string value = argv[++index];
             std::uint32_t parsed_value = 0;
             if (!parse_positive_integer(value, parsed_value)) {
-                std::cerr << "Error: invalid " << argument << " value '"
-                          << value << "'; expected a positive integer\n";
+                std::cerr << "Error: invalid " << argument << " value '" << value << "'; expected a positive integer\n";
                 return 2;
             }
 
@@ -214,8 +199,7 @@ int main(int argc, char* argv[])
             const std::string value = argv[++index];
             std::uint32_t parsed_value = 0;
             if (!parse_positive_integer(value, parsed_value)) {
-                std::cerr << "Error: invalid --fps value '" << value
-                          << "'; expected a positive integer\n";
+                std::cerr << "Error: invalid --fps value '" << value << "'; expected a positive integer\n";
                 return 2;
             }
 
@@ -233,8 +217,7 @@ int main(int argc, char* argv[])
             const std::string value = argv[++index];
             std::uint32_t parsed_value = 0;
             if (!parse_positive_integer(value, parsed_value)) {
-                std::cerr << "Error: invalid --count value '" << value
-                          << "'; expected a positive integer\n";
+                std::cerr << "Error: invalid --count value '" << value << "'; expected a positive integer\n";
                 return 2;
             }
 
@@ -252,8 +235,7 @@ int main(int argc, char* argv[])
             const std::string value = argv[++index];
             std::uint32_t parsed_value = 0;
             if (!parse_non_negative_integer(value, parsed_value)) {
-                std::cerr << "Error: invalid --skip value '" << value
-                          << "'; expected a non-negative integer\n";
+                std::cerr << "Error: invalid --skip value '" << value << "'; expected a non-negative integer\n";
                 return 2;
             }
 
