@@ -1,15 +1,54 @@
 #include "camstream/camera_service.hpp"
 
 #include <cerrno>
+#include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <poll.h>
 #include <pthread.h>
 #include <sys/signalfd.h>
 #include <unistd.h>
+#include <utility>
 
 namespace camstream {
 namespace {
+
+constexpr auto kFiniteStallAllowance = std::chrono::seconds { 120 };
+
+std::chrono::steady_clock::duration finite_run_timeout(
+    const GstreamerPipelineConfig& config) noexcept
+{
+    if (config.buffer_count == 0U || config.fps == 0U) {
+        return std::chrono::steady_clock::duration::zero();
+    }
+
+    const auto buffer_count = static_cast<std::uint64_t>(config.buffer_count);
+    const auto fps = static_cast<std::uint64_t>(config.fps);
+    const auto nominal_seconds = (buffer_count + fps - 1U) / fps;
+    return std::chrono::seconds {
+               static_cast<std::chrono::seconds::rep>(nominal_seconds) }
+        + kFiniteStallAllowance;
+}
+
+int remaining_poll_timeout(
+    std::chrono::steady_clock::time_point deadline) noexcept
+{
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) {
+        return 0;
+    }
+
+    const auto remaining =
+        std::chrono::ceil<std::chrono::milliseconds>(deadline - now).count();
+    constexpr auto maximum_timeout = static_cast<
+        std::chrono::milliseconds::rep>(std::numeric_limits<int>::max());
+    if (remaining > maximum_timeout) {
+        return std::numeric_limits<int>::max();
+    }
+    return static_cast<int>(remaining);
+}
 
 const char* camera_service_state_name(CameraServiceState state) noexcept
 {
@@ -18,10 +57,14 @@ const char* camera_service_state_name(CameraServiceState state) noexcept
         return "Created";
     case CameraServiceState::Initialized:
         return "Initialized";
+    case CameraServiceState::PipelineReady:
+        return "PipelineReady";
     case CameraServiceState::Running:
         return "Running";
     case CameraServiceState::StopRequested:
         return "StopRequested";
+    case CameraServiceState::Failed:
+        return "Failed";
     case CameraServiceState::Stopped:
         return "Stopped";
     }
@@ -29,6 +72,13 @@ const char* camera_service_state_name(CameraServiceState state) noexcept
 }
 
 } // namespace
+
+CameraService::CameraService(GstreamerPipelineConfig config)
+    : finite_pipeline_(config.buffer_count > 0U)
+    , finite_run_timeout_(finite_run_timeout(config))
+    , pipeline_(std::move(config))
+{
+}
 
 CameraService::~CameraService() noexcept
 {
@@ -81,6 +131,19 @@ bool CameraService::initialize()
 
     state_ = CameraServiceState::Initialized;
     std::cout << "Camera service initialized" << std::endl;
+
+    if (!pipeline_.build()) {
+        state_ = CameraServiceState::Failed;
+        return false;
+    }
+    bus_poll_fd_ = pipeline_.bus_poll_fd();
+    if (bus_poll_fd_ < 0) {
+        state_ = CameraServiceState::Failed;
+        return false;
+    }
+
+    state_ = CameraServiceState::PipelineReady;
+    std::cout << "Camera service pipeline ready" << std::endl;
     return true;
 }
 
@@ -91,61 +154,74 @@ bool CameraService::run()
                   << " initialization thread\n";
         return false;
     }
-    if (state_ != CameraServiceState::Initialized) {
-        std::cerr << "Error: camera service run() requires Initialized state;"
+    if (state_ != CameraServiceState::PipelineReady) {
+        std::cerr << "Error: camera service run() requires PipelineReady state;"
                   << " current state is " << state_name() << '\n';
+        return false;
+    }
+
+    if (!pipeline_.start()) {
+        static_cast<void>(pipeline_.drain_bus_messages());
+        state_ = CameraServiceState::Failed;
         return false;
     }
 
     state_ = CameraServiceState::Running;
     std::cout << "Camera service running" << std::endl;
 
+    const auto finite_deadline =
+        std::chrono::steady_clock::now() + finite_run_timeout_;
+
     while (state_ == CameraServiceState::Running) {
-        pollfd signal_event {
-            signal_fd_,
-            POLLIN,
-            0,
+        pollfd events[] = {
+            { signal_fd_, POLLIN, 0 },
+            { bus_poll_fd_, POLLIN, 0 },
         };
 
-        const int poll_result = poll(&signal_event, 1, -1);
+        const int poll_timeout =
+            finite_pipeline_ ? remaining_poll_timeout(finite_deadline) : -1;
+        if (finite_pipeline_ && poll_timeout == 0) {
+            std::cerr << "Error: finite pipeline exceeded its nominal duration "
+                         "plus the 120-second stall allowance\n";
+            state_ = CameraServiceState::Failed;
+            return false;
+        }
+
+        const int poll_result = poll(events, 2, poll_timeout);
         if (poll_result < 0) {
             if (errno == EINTR) {
                 continue;
             }
             std::cerr << "Error: service poll failed: "
                       << std::strerror(errno) << '\n';
+            state_ = CameraServiceState::Failed;
+            return false;
+        }
+        if (poll_result == 0) {
+            std::cerr << "Error: finite pipeline exceeded its nominal duration "
+                         "plus the 120-second stall allowance\n";
+            state_ = CameraServiceState::Failed;
             return false;
         }
 
-        if ((signal_event.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+        if ((events[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
             std::cerr << "Error: signalfd reported poll events 0x" << std::hex
-                      << signal_event.revents << std::dec << '\n';
+                      << events[0].revents << std::dec << '\n';
+            state_ = CameraServiceState::Failed;
+            return false;
+        }
+        if ((events[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            std::cerr << "Error: GstBus reported poll events 0x" << std::hex
+                      << events[1].revents << std::dec << '\n';
+            state_ = CameraServiceState::Failed;
             return false;
         }
 
-        if ((signal_event.revents & POLLIN) == 0) {
-            continue;
-        }
-
-        int signal_number = 0;
-        if (!read_signal_event(signal_number)) {
+        if ((events[0].revents & POLLIN) != 0 && !handle_signal_event()) {
+            state_ = CameraServiceState::Failed;
             return false;
         }
-        if (signal_number == 0) {
-            continue;
-        }
-
-        if (signal_number == SIGINT) {
-            std::cout << "SIGINT received" << std::endl;
-        } else if (signal_number == SIGTERM) {
-            std::cout << "SIGTERM received" << std::endl;
-        } else {
-            std::cerr << "Error: unexpected signal " << signal_number
-                      << " received through signalfd\n";
-            return false;
-        }
-
-        if (!request_stop()) {
+        if ((events[1].revents & POLLIN) != 0 && !handle_bus_event()) {
             return false;
         }
     }
@@ -183,12 +259,19 @@ bool CameraService::shutdown() noexcept
     }
 
     if (state_ != CameraServiceState::Stopped) {
-        state_ = CameraServiceState::StopRequested;
+        if (state_ != CameraServiceState::Failed) {
+            state_ = CameraServiceState::StopRequested;
+        }
         std::cout << "Camera service stopping" << std::endl;
     }
 
+    bool success = pipeline_.stop();
+    bus_poll_fd_ = -1;
+
     const bool safe_to_restore_mask = ignore_termination_signals();
-    bool success = safe_to_restore_mask;
+    if (!safe_to_restore_mask) {
+        success = false;
+    }
     if (!drain_signal_events()) {
         success = false;
     }
@@ -247,6 +330,48 @@ bool CameraService::read_signal_event(int& signal_number) noexcept
 
     signal_number = static_cast<int>(signal_info.ssi_signo);
     return true;
+}
+
+bool CameraService::handle_signal_event() noexcept
+{
+    int signal_number = 0;
+    if (!read_signal_event(signal_number)) {
+        return false;
+    }
+    if (signal_number == 0) {
+        return true;
+    }
+
+    if (signal_number == SIGINT) {
+        std::cout << "SIGINT received" << std::endl;
+    } else if (signal_number == SIGTERM) {
+        std::cout << "SIGTERM received" << std::endl;
+    } else {
+        std::cerr << "Error: unexpected signal " << signal_number
+                  << " received through signalfd\n";
+        return false;
+    }
+
+    return request_stop();
+}
+
+bool CameraService::handle_bus_event() noexcept
+{
+    const GstreamerBusOutcome outcome = pipeline_.drain_bus_messages();
+    if (outcome == GstreamerBusOutcome::Continue) {
+        return true;
+    }
+    if (outcome == GstreamerBusOutcome::Error) {
+        state_ = CameraServiceState::Failed;
+        return false;
+    }
+    if (!finite_pipeline_) {
+        std::cerr << "Error: continuous pipeline reached unexpected EOS\n";
+        state_ = CameraServiceState::Failed;
+        return false;
+    }
+
+    return request_stop();
 }
 
 bool CameraService::drain_signal_events() noexcept

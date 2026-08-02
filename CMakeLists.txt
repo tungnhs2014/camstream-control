@@ -12,8 +12,11 @@ if(CAMSTREAM_BUILD_CAPTURE)
     add_subdirectory(apps/camstream-capture)
 endif()
 
-if(CAMSTREAM_BUILD_GST_TEST)
+if(CAMSTREAM_BUILD_GST_TEST OR CAMSTREAM_BUILD_SERVICE)
     add_subdirectory(libs/camstream-gstreamer)
+endif()
+
+if(CAMSTREAM_BUILD_GST_TEST)
     add_subdirectory(apps/camstream-gst-test)
 endif()
 

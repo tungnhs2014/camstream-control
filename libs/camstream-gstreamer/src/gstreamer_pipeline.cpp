@@ -71,11 +71,12 @@ bool GstreamerPipeline::validate_config() const
     }
 
     if (config_.width == 0U || config_.height == 0U || config_.fps == 0U
-        || config_.buffer_count == 0U || config_.width > maximum_gint
-        || config_.height > maximum_gint || config_.fps > maximum_gint
+        || config_.width > maximum_gint || config_.height > maximum_gint
+        || config_.fps > maximum_gint
         || config_.buffer_count > maximum_gint) {
-        std::cerr << "Error: width, height, fps, and buffers must fit a "
-                     "positive GStreamer integer property\n";
+        std::cerr << "Error: width, height, and fps must fit a positive "
+                     "GStreamer integer property; buffers must fit a "
+                     "non-negative GStreamer integer property\n";
         return false;
     }
 
@@ -112,23 +113,36 @@ GstElement* GstreamerPipeline::create_and_add_element(
 
 bool GstreamerPipeline::configure_source(GstElement* source) const
 {
-    if (!validate_property(G_OBJECT(source), "device", G_TYPE_STRING)
-        || !validate_property(G_OBJECT(source), "num-buffers", G_TYPE_INT)) {
+    if (!validate_property(G_OBJECT(source), "device", G_TYPE_STRING)) {
         return false;
     }
 
-    const auto requested_buffers = static_cast<gint>(config_.buffer_count);
-    g_object_set(G_OBJECT(source), "device", config_.device_path.c_str(),
-                 "num-buffers", requested_buffers, nullptr);
+    const bool finite_run = config_.buffer_count > 0U;
+    if (finite_run
+        && !validate_property(G_OBJECT(source), "num-buffers", G_TYPE_INT)) {
+        return false;
+    }
+
+    if (finite_run) {
+        const auto requested_buffers = static_cast<gint>(config_.buffer_count);
+        g_object_set(G_OBJECT(source), "device", config_.device_path.c_str(),
+                     "num-buffers", requested_buffers, nullptr);
+    } else {
+        // Preserve the source's unlimited default instead of imposing a count.
+        g_object_set(G_OBJECT(source), "device", config_.device_path.c_str(),
+                     nullptr);
+    }
 
     gchar* active_device = nullptr;
-    gint active_buffers = 0;
-    g_object_get(G_OBJECT(source), "device", &active_device, "num-buffers",
-                 &active_buffers, nullptr);
+    g_object_get(G_OBJECT(source), "device", &active_device, nullptr);
 
-    const bool matches = active_device != nullptr
-        && config_.device_path == active_device
-        && active_buffers == requested_buffers;
+    bool matches =
+        active_device != nullptr && config_.device_path == active_device;
+    if (matches && finite_run) {
+        gint active_buffers = 0;
+        g_object_get(G_OBJECT(source), "num-buffers", &active_buffers, nullptr);
+        matches = active_buffers == static_cast<gint>(config_.buffer_count);
+    }
     if (!matches) {
         std::cerr << "Error: v4l2src properties were not applied as requested\n";
     }
@@ -332,9 +346,15 @@ bool GstreamerPipeline::wait()
         std::cerr << "Error: pipeline must be started before wait()\n";
         return false;
     }
+    if (config_.buffer_count == 0U) {
+        std::cerr << "Error: wait() requires a positive finite buffer count; "
+                     "use bus polling for continuous mode\n";
+        return false;
+    }
 
     constexpr auto message_types = static_cast<GstMessageType>(
-        GST_MESSAGE_EOS | GST_MESSAGE_ERROR | GST_MESSAGE_STATE_CHANGED);
+        GST_MESSAGE_EOS | GST_MESSAGE_ERROR | GST_MESSAGE_WARNING
+        | GST_MESSAGE_STATE_CHANGED);
     const auto buffer_count = static_cast<guint64>(config_.buffer_count);
     const auto fps = static_cast<guint64>(config_.fps);
     const GstClockTime nominal_duration =
@@ -370,62 +390,141 @@ bool GstreamerPipeline::wait()
         std::unique_ptr<GstMessage, decltype(&gst_message_unref)> owned_message(
             message, gst_message_unref);
 
-        switch (GST_MESSAGE_TYPE(message)) {
-        case GST_MESSAGE_EOS:
-            std::cout << "Pipeline: EOS\n";
-            started_ = false;
-            run_finished_ = true;
+        const GstreamerBusOutcome outcome = process_bus_message(message);
+        if (outcome == GstreamerBusOutcome::EndOfStream) {
             return true;
-
-        case GST_MESSAGE_ERROR: {
-            GError* error = nullptr;
-            gchar* debug_details = nullptr;
-            gst_message_parse_error(message, &error, &debug_details);
-
-            const GstObject* source = GST_MESSAGE_SRC(message);
-            std::cerr << "Pipeline error source: "
-                      << (source != nullptr ? GST_OBJECT_NAME(source)
-                                            : "unknown")
-                      << '\n'
-                      << "Pipeline error message: "
-                      << (error != nullptr ? error->message : "unavailable")
-                      << '\n'
-                      << "Pipeline error debug: "
-                      << (debug_details != nullptr ? debug_details
-                                                   : "unavailable")
-                      << '\n';
-
-            if (error != nullptr) {
-                g_error_free(error);
-            }
-            g_free(debug_details);
-            started_ = false;
-            run_finished_ = true;
+        }
+        if (outcome == GstreamerBusOutcome::Error) {
             return false;
         }
+    }
+}
 
-        case GST_MESSAGE_STATE_CHANGED:
-            if (GST_MESSAGE_SRC(message) == GST_OBJECT(pipeline_)) {
-                GstState old_state = GST_STATE_VOID_PENDING;
-                GstState new_state = GST_STATE_VOID_PENDING;
-                GstState pending_state = GST_STATE_VOID_PENDING;
-                gst_message_parse_state_changed(message, &old_state, &new_state,
-                                                &pending_state);
+int GstreamerPipeline::bus_poll_fd() const noexcept
+{
+    if (!built_ || bus_ == nullptr) {
+        std::cerr << "Error: pipeline must be built before requesting its bus "
+                     "poll descriptor\n";
+        return -1;
+    }
+
+    GPollFD poll_descriptor {};
+    gst_bus_get_pollfd(bus_, &poll_descriptor);
+    if (poll_descriptor.fd < 0) {
+        std::cerr << "Error: GstBus returned an invalid poll descriptor\n";
+        return -1;
+    }
+    return poll_descriptor.fd;
+}
+
+GstreamerBusOutcome GstreamerPipeline::drain_bus_messages() noexcept
+{
+    if (!built_ || bus_ == nullptr) {
+        std::cerr << "Error: pipeline must be built before draining its bus\n";
+        return GstreamerBusOutcome::Error;
+    }
+
+    GstreamerBusOutcome aggregate = GstreamerBusOutcome::Continue;
+    while (GstMessage* message = gst_bus_pop(bus_)) {
+        std::unique_ptr<GstMessage, decltype(&gst_message_unref)> owned_message(
+            message, gst_message_unref);
+        const GstreamerBusOutcome outcome = process_bus_message(message);
+        if (outcome == GstreamerBusOutcome::Error) {
+            aggregate = GstreamerBusOutcome::Error;
+        } else if (outcome == GstreamerBusOutcome::EndOfStream
+                   && aggregate == GstreamerBusOutcome::Continue) {
+            aggregate = GstreamerBusOutcome::EndOfStream;
+        }
+    }
+    return aggregate;
+}
+
+GstreamerBusOutcome GstreamerPipeline::process_bus_message(
+    GstMessage* message) noexcept
+{
+    if (message == nullptr) {
+        std::cerr << "Error: cannot process a null GstBus message\n";
+        started_ = false;
+        run_finished_ = true;
+        return GstreamerBusOutcome::Error;
+    }
+
+    switch (GST_MESSAGE_TYPE(message)) {
+    case GST_MESSAGE_EOS:
+        std::cout << "Pipeline: EOS\n";
+        started_ = false;
+        run_finished_ = true;
+        return GstreamerBusOutcome::EndOfStream;
+
+    case GST_MESSAGE_ERROR: {
+        GError* error = nullptr;
+        gchar* debug_details = nullptr;
+        gst_message_parse_error(message, &error, &debug_details);
+
+        const GstObject* source = GST_MESSAGE_SRC(message);
+        std::cerr << "Pipeline error source: "
+                  << (source != nullptr ? GST_OBJECT_NAME(source) : "unknown")
+                  << '\n'
+                  << "Pipeline error message: "
+                  << (error != nullptr ? error->message : "unavailable") << '\n'
+                  << "Pipeline error debug: "
+                  << (debug_details != nullptr ? debug_details : "unavailable")
+                  << '\n';
+
+        if (error != nullptr) {
+            g_error_free(error);
+        }
+        g_free(debug_details);
+        started_ = false;
+        run_finished_ = true;
+        return GstreamerBusOutcome::Error;
+    }
+
+    case GST_MESSAGE_WARNING: {
+        GError* warning = nullptr;
+        gchar* debug_details = nullptr;
+        gst_message_parse_warning(message, &warning, &debug_details);
+
+        const GstObject* source = GST_MESSAGE_SRC(message);
+        std::cerr << "Pipeline warning source: "
+                  << (source != nullptr ? GST_OBJECT_NAME(source) : "unknown")
+                  << '\n'
+                  << "Pipeline warning message: "
+                  << (warning != nullptr ? warning->message : "unavailable")
+                  << '\n'
+                  << "Pipeline warning debug: "
+                  << (debug_details != nullptr ? debug_details : "unavailable")
+                  << '\n';
+
+        if (warning != nullptr) {
+            g_error_free(warning);
+        }
+        g_free(debug_details);
+        return GstreamerBusOutcome::Continue;
+    }
+
+    case GST_MESSAGE_STATE_CHANGED:
+        if (GST_MESSAGE_SRC(message) == GST_OBJECT(pipeline_)) {
+            GstState old_state = GST_STATE_VOID_PENDING;
+            GstState new_state = GST_STATE_VOID_PENDING;
+            GstState pending_state = GST_STATE_VOID_PENDING;
+            gst_message_parse_state_changed(message, &old_state, &new_state,
+                                            &pending_state);
+            if (old_state != new_state) {
                 std::cout << "Pipeline state changed: "
                           << gst_element_state_get_name(old_state) << " -> "
                           << gst_element_state_get_name(new_state);
                 if (pending_state != GST_STATE_VOID_PENDING) {
                     std::cout << " (pending "
-                              << gst_element_state_get_name(pending_state)
-                              << ')';
+                              << gst_element_state_get_name(pending_state) << ')';
                 }
                 std::cout << '\n';
             }
-            break;
-
-        default:
-            break;
         }
+        return GstreamerBusOutcome::Continue;
+
+    default:
+        return GstreamerBusOutcome::Continue;
     }
 }
 
