@@ -83,6 +83,9 @@ Completed engineering checkpoints and validated functionality are:
   Buildroot validation plus accepted BBB service-lifecycle smoke tests
 - Stage 8.2 — GStreamer Service Integration: **COMPLETE**, including service
   ownership of the reusable pipeline and accepted BBB functional validation
+- Stage 8.3 — Camera PPI Core: **COMPLETE** within its host-only scope,
+  including focused build, lifecycle, failure-path, sanitizer, Valgrind, and
+  repeated-lifecycle validation
 
 Stage 6B application functionality, documentation, Buildroot integration,
 clean image generation, and packaged BBB/C270 validation are **PASS**. YUYV
@@ -116,12 +119,23 @@ finite validation runs, handles EOS, errors, warnings, and pipeline state
 changes, and performs deterministic signal-driven shutdown. Host, Buildroot,
 and accepted BBB functional validation passed. Stage 8.2 is **COMPLETE**.
 
+Stage 8.3 introduces the stable Camera PPI C ABI, explicit backend loading,
+the C++17 `CameraSession` ownership wrapper, a simulated backend, and a finite
+diagnostic application. Owner-provided host build and lifecycle evidence,
+failure paths, sanitizers, Valgrind, and 100 repeated executions passed.
+Stage 8.3 is **COMPLETE** within its host-only scope. Buildroot, BeagleBone
+Black, and Raspberry Pi validation were not run for this stage.
+
 C270 USB resets and inconsistent real throughput remain tracked as
 [STAGE7-USB-01](docs/validation/stage-07-gstreamer-integration.md). Stable
 production 30-fps operation and long-term USB reliability are not yet claimed.
 
 ## Documentation
 
+- [Documentation index](docs/README.md)
+- [System overview](docs/architecture/system-overview.md)
+- [Project coding standard](docs/development/coding-standard.md)
+- [Debugging and validation guide](docs/development/debugging-and-validation-guide.md)
 - [Ubuntu host setup](docs/guides/host-setup.md)
 - [BeagleBone Buildroot bring-up](docs/guides/beaglebone-buildroot-bringup.md)
 - [Network and remote-access bring-up](docs/guides/network-remote-access-bringup.md)
@@ -134,6 +148,7 @@ production 30-fps operation and long-term USB reliability are not yet claimed.
 - [Stage 8.0 userspace CMake foundation](docs/validation/stage-08-userspace-cmake-foundation.md)
 - [Stage 8.1 camera service skeleton](docs/validation/stage-08.1-camera-service-skeleton.md)
 - [Stage 8.2 GStreamer service integration](docs/validation/stage-08.2-gstreamer-service-integration.md)
+- [Stage 8.3 Camera PPI Core](docs/validation/stage-08.3-camera-ppi.md)
 
 Guides explain the reproducible project flow. Validation reports distinguish
 runtime-tested behavior from enumerated capability and deferred work.
@@ -170,13 +185,15 @@ camera frames do not belong in this repository.
 | Stage 8.0 — userspace CMake foundation | **COMPLETE** |
 | Stage 8.1 — camera service skeleton | **COMPLETE** |
 | Stage 8.2 — GStreamer Service Integration | **COMPLETE** |
-| Stage 8.3 — Reusable V4L2 Userspace Library | **NEXT** |
-| Stage 8.4 — custom `camstreamstats` `GstBaseTransform` plugin | **PLANNED** |
-| Stage 8.5 — custom `camstreamsrc` `GstPushSrc` plugin | **PLANNED** |
-| Stage 8.6 — service integration with custom plugins | **PLANNED** |
-| Stage 8.7 — IPC command/control | **PLANNED** |
+| Stage 8.3 — Camera PPI Core | **COMPLETE** |
+| Stage 8.4 — V4L2 Camera PPI Backend | **NEXT** |
+| Stage 8.5 — Raspberry Pi Platform Port | **PLANNED** |
+| Stage 8.6 — custom `camstreamstats` `GstBaseTransform` plugin | **PLANNED** |
+| Stage 8.7 — custom `camstreamsrc` `GstPushSrc` plugin | **PLANNED** |
+| Stage 8.8 — service integration with custom plugins | **PLANNED** |
+| Stage 8.9 — IPC command/control | **PLANNED** |
 | Stage 9 — network camera streaming | **PLANNED** |
 
-Stages 6, 7, 8.0, 8.1, and 8.2 are complete. Stage 8.3 is next. Future work
-must preserve the upstream UVC/V4L2 baseline and the evidence boundaries
+Stages 6, 7, 8.0, 8.1, 8.2, and 8.3 are complete. Stage 8.4 is next. Future
+work must preserve the upstream UVC/V4L2 baseline and the evidence boundaries
 recorded above.
