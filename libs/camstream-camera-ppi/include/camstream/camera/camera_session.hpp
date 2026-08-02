@@ -12,6 +12,10 @@
 
 namespace camstream::camera {
 
+namespace detail {
+class CameraSessionIdentity;
+}
+
 /**
  * @brief Exception describing a loader or backend operation failure.
  */
@@ -65,8 +69,10 @@ struct CameraPlane {
  *
  * The frame does not own its image storage. It must be returned to the same
  * CameraSession with release_frame() before the session stops or closes. The
- * session also releases any still-outstanding tokens during destructor cleanup.
- * Access after successful release_frame() or session destruction is invalid.
+ * originating session is identified independently of the backend-local frame
+ * token. The session also releases any still-outstanding tokens during
+ * destructor cleanup. Access after successful release_frame() or session
+ * destruction is invalid.
  */
 class CameraFrame final {
   public:
@@ -107,9 +113,11 @@ class CameraFrame final {
   private:
     friend class CameraSession;
 
-    explicit CameraFrame(const camstream_camera_frame_v1& frame);
+    CameraFrame(const camstream_camera_frame_v1& frame,
+                std::shared_ptr<const detail::CameraSessionIdentity> owner_identity) noexcept;
     void invalidate() noexcept;
 
+    std::shared_ptr<const detail::CameraSessionIdentity> owner_identity_;
     std::uint64_t frame_token_ = 0;
     std::uint64_t sequence_number_ = 0;
     std::uint64_t monotonic_timestamp_ns_ = 0;

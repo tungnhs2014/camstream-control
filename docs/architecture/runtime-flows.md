@@ -1,8 +1,9 @@
 # Stage 8.3 Camera PPI Runtime Flows
 
 Stage 8.3 defines a finite diagnostic flow through `camstream-camera-test`, `CameraSession`, the explicit backend loader,
-and the simulated backend. The flow below describes behavior validated on the development host. Buildroot and board
-runtime validation were not performed.
+and the simulated backend. The original finite lifecycle was validated on the development host. The owner-identity and
+acquire-rollback paths below describe the corrective implementation and remain pending owner revalidation. Buildroot
+and board runtime validation were not performed.
 
 ## Successful lifecycle sequence
 
@@ -36,9 +37,12 @@ sequenceDiagram
         App->>Session: acquire_frame()
         Session->>Backend: acquire_frame()
         Backend-->>Session: token and borrowed planes
+        Session->>Session: validate frame and track backend-local token
         Session-->>App: CameraFrame view
         App->>Session: release_frame(frame)
+        Session->>Session: validate frame, owner identity, and outstanding token
         Session->>Backend: release_frame(token)
+        Session->>Session: remove token and invalidate frame
     end
     App->>Session: stop()
     Session->>Backend: stop()
@@ -103,6 +107,34 @@ performs the cleanup appropriate to the last successful state.
 
 ### Outstanding frame ownership
 
-After acquire succeeds, the backend owns storage and the session records the token. Explicit stop and close reject an
-unreleased frame. Destructor cleanup walks all recorded tokens, attempts release, then performs stop, close, destroy,
-and `dlclose()` in that order. Even when a cleanup callback fails, the module remains loaded until after `destroy()`.
+After acquire succeeds, the backend owns storage and the session records the backend-instance-local token together with
+an independent C++ owner identity. Release follows this order:
+
+```text
+validate session state
+-> validate frame
+-> validate originating session owner identity
+-> validate outstanding token
+-> backend release
+-> remove token and invalidate frame
+```
+
+If session B is given a frame from session A, the owner check returns an invalid-argument error before backend B is
+called. The supplied frame stays valid, both sessions retain their legitimate outstanding tokens, and each frame can
+still be released through its originating session. Equal numeric tokens from two backend instances do not change this
+result.
+
+Explicit stop and close reject an unreleased frame. Destructor cleanup walks all recorded tokens, attempts release,
+then performs stop, close, destroy, and `dlclose()` in that order. Even when a cleanup callback fails, the module remains
+loaded until after `destroy()`.
+
+### Acquire commit and rollback
+
+After a backend returns a frame, the wrapper validates its ABI and metadata, rejects a duplicate token within that
+session, and records the token before returning the C++ view. If validation or token-container insertion fails, it
+attempts backend release immediately. Successful rollback leaves no tracked token.
+
+If rollback release also fails, the wrapper retains that one token as pending cleanup and reports both the original
+commit failure and rollback failure. While the token is unresolved, normal wait/acquire operations are rejected.
+Explicit `stop()` retries the pending release, and destructor cleanup retries it before releasing other recorded tokens
+and continuing best-effort teardown. No general transaction layer is introduced.

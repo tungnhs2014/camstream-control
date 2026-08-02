@@ -118,7 +118,16 @@ backend may map it to a request or framebuffer. Those mappings must never cross 
 multiple planes without STL at the ABI boundary, and the token model permits multiple backend buffers to be outstanding.
 
 `CameraSession` records each outstanding token, rejects duplicate tokens, validates plane bounds, and invalidates the
-C++ frame view only after successful release.
+C++ frame view only after successful release. Backend tokens are local to one backend instance: two sessions may both
+hold a valid token with the same numeric value. Token equality across sessions therefore does not imply shared
+ownership.
+
+The C++ wrapper assigns each `CameraSession` an independent shared owner identity and stores that identity in every
+acquired `CameraFrame`. `release_frame()` first validates the frame, then its originating session identity, and only
+then searches that session's outstanding tokens or calls the backend. A frame must be returned through its originating
+session; a cross-session attempt is rejected without invoking the wrong backend or invalidating either frame. The
+identity remains alive if a frame outlives its session object. It is private C++ wrapper state and does not change the
+Camera PPI C ABI or require globally unique backend tokens.
 
 ## Cleanup ordering
 
@@ -135,6 +144,11 @@ release every acquired frame
 Destructor cleanup applies the same ordering on a best-effort basis. Outstanding tokens are released before stop;
 `destroy` is still called if an earlier cleanup callback fails. The backend contract requires `destroy` to reclaim its
 remaining resources after partial initialization or failed cleanup.
+
+If backend acquisition succeeds but wrapper validation or token tracking fails, the wrapper first attempts to return
+the new token. A failed rollback is reported together with the original wrapper failure and retained as one pending
+cleanup token. Further wait/acquire operations are blocked until cleanup succeeds. Explicit `stop()` and destructor
+cleanup retry the pending release before continuing with their existing cleanup policy.
 
 ## Simulated and future backends
 

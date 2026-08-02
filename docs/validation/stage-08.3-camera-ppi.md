@@ -6,6 +6,12 @@ This report records owner-provided host validation for the Camera PPI core, dyna
 finite diagnostic application. Stage 8.3 does not include a V4L2 backend, libcamera backend, Buildroot deployment, or
 board runtime validation.
 
+## Post-validation corrective status
+
+A post-validation code review identified a cross-session frame-ownership gap. A corrective fix is pending owner
+revalidation. The original validation results below remain valid only for the paths actually exercised and do not mark
+the corrective path as `PASS`.
+
 ## Validation environment
 
 - Branch: `stage/08.3-camera-ppi-core`
