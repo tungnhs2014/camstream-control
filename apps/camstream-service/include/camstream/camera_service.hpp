@@ -40,16 +40,16 @@ enum class CameraServiceState {
  * object reaches Stopped; the prior signal dispositions are not restored.
  */
 class CameraService final {
-public:
+  public:
     /**
      * @brief Creates a service and stores the immutable pipeline configuration.
-     * @param config Camera pipeline configuration validated during initialize().
+     * @param pipeline_config Camera pipeline configuration validated during initialize().
      *
      * No operating-system or GStreamer resources are acquired by construction.
      * A zero buffer count selects continuous service mode; a positive count
      * selects bounded validation mode.
      */
-    explicit CameraService(GstreamerPipelineConfig config);
+    explicit CameraService(GstreamerPipelineConfig pipeline_config);
 
     /**
      * @brief Releases any signal descriptor and restores the previous mask.
@@ -115,7 +115,7 @@ public:
     /** @brief Returns a stable textual name for the current lifecycle state. */
     const char* state_name() const noexcept;
 
-private:
+  private:
     bool called_from_owner_thread() const noexcept;
     bool read_signal_event(int& signal_number) noexcept;
     bool handle_signal_event() noexcept;
@@ -125,16 +125,16 @@ private:
     bool close_signal_fd() noexcept;
     bool restore_signal_mask() noexcept;
 
-    CameraServiceState state_ = CameraServiceState::Created;
-    bool finite_pipeline_ = false;
-    std::chrono::steady_clock::duration finite_run_timeout_ {};
-    GstreamerPipeline pipeline_;
-    int signal_fd_ = -1;
-    int bus_poll_fd_ = -1;
-    sigset_t previous_signal_mask_ {};
-    pthread_t owner_thread_ {};
-    bool owner_thread_set_ = false;
-    bool owns_signal_mask_ = false;
+    CameraServiceState lifecycle_state = CameraServiceState::Created;
+    bool finite_pipeline = false;
+    std::chrono::steady_clock::duration finite_run_timeout{};
+    GstreamerPipeline pipeline;
+    int signal_fd = -1;
+    int bus_poll_fd = -1;
+    sigset_t previous_signal_mask{};
+    pthread_t owner_thread{};
+    bool owner_thread_set = false;
+    bool owns_signal_mask = false;
 };
 
 } // namespace camstream

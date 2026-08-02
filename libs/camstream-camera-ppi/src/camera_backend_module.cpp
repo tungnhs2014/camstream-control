@@ -40,12 +40,12 @@ std::size_t bounded_string_length(const char* text, std::size_t maximum_length) 
 
 } // namespace
 
-CameraBackendModule::CameraBackendModule(void* handle,
-                                         const camstream_camera_backend_v1* descriptor,
-                                         std::string backend_name,
-                                         std::string backend_path)
-    : handle_(handle), descriptor_(descriptor), backend_name_(std::move(backend_name)),
-      backend_path_(std::move(backend_path)) {}
+CameraBackendModule::CameraBackendModule(void* loaded_handle,
+                                         const camstream_camera_backend_v1* validated_descriptor,
+                                         std::string backend_identity,
+                                         std::string module_path)
+    : module_handle(loaded_handle), backend_descriptor(validated_descriptor),
+      validated_backend_name(std::move(backend_identity)), loaded_backend_path(std::move(module_path)) {}
 
 std::unique_ptr<CameraBackendModule> CameraBackendModule::load(const std::string& backend_path) {
     if (backend_path.empty()) {
@@ -118,27 +118,27 @@ std::unique_ptr<CameraBackendModule> CameraBackendModule::load(const std::string
 }
 
 CameraBackendModule::~CameraBackendModule() noexcept {
-    descriptor_ = nullptr;
-    if (handle_ != nullptr) {
-        if (dlclose(handle_) != 0) {
+    backend_descriptor = nullptr;
+    if (module_handle != nullptr) {
+        if (dlclose(module_handle) != 0) {
             const char* const error = dlerror();
-            std::cerr << "Error: dlclose failed for camera backend '" << backend_path_
+            std::cerr << "Error: dlclose failed for camera backend '" << loaded_backend_path
                       << "': " << (error != nullptr ? error : "unknown error") << '\n';
         }
-        handle_ = nullptr;
+        module_handle = nullptr;
     }
 }
 
 const camstream_camera_backend_v1& CameraBackendModule::descriptor() const noexcept {
-    return *descriptor_;
+    return *backend_descriptor;
 }
 
 const std::string& CameraBackendModule::backend_name() const noexcept {
-    return backend_name_;
+    return validated_backend_name;
 }
 
 const std::string& CameraBackendModule::path() const noexcept {
-    return backend_path_;
+    return loaded_backend_path;
 }
 
 } // namespace camstream::camera

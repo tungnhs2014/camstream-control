@@ -19,12 +19,12 @@ namespace camstream {
  * always have one stable owner.
  */
 class V4l2Device final {
-public:
+  public:
     /**
      * @brief Opens a V4L2 device for nonblocking read/write access.
-     * @param device_path Device node to open.
+     * @param requested_device_path Device node to open.
      */
-    explicit V4l2Device(std::string device_path);
+    explicit V4l2Device(std::string requested_device_path);
     ~V4l2Device();
 
     V4l2Device(const V4l2Device&) = delete;
@@ -102,9 +102,7 @@ public:
      * exactly frame_count later valid buffers were captured, and every
      * dequeued buffer was requeued while streaming remained active.
      */
-    bool capture_frames(std::uint32_t frame_count,
-                        std::uint32_t skip_frames,
-                        const std::string& output_path);
+    bool capture_frames(std::uint32_t frame_count, std::uint32_t skip_frames, const std::string& output_path);
 
     /**
      * @brief Stops a stream previously started by this object.
@@ -129,23 +127,23 @@ public:
      */
     bool close();
 
-private:
+  private:
     bool negotiate_frame_rate(std::uint32_t requested_fps);
     bool release_driver_buffers();
     bool close_descriptor();
 
-    std::string device_path_;
-    int fd_ = -1;
-    std::vector<MappedBuffer> mappings_;
-    std::uint32_t active_pixel_format_ = 0;
-    std::uint32_t active_width_ = 0;
-    std::uint32_t active_height_ = 0;
-    std::uint32_t active_bytes_per_line_ = 0;
-    std::uint32_t active_size_image_ = 0;
-    std::uint32_t granted_buffer_count_ = 0;
-    bool driver_buffers_allocated_ = false;
-    bool buffers_queued_ = false;
-    bool streaming_ = false;
+    std::string device_path;
+    int fd = -1;
+    std::vector<MappedBuffer> mappings;
+    std::uint32_t active_pixel_format = 0;
+    std::uint32_t active_width = 0;
+    std::uint32_t active_height = 0;
+    std::uint32_t active_bytes_per_line = 0;
+    std::uint32_t active_size_image = 0;
+    std::uint32_t granted_buffer_count = 0;
+    bool driver_buffers_allocated = false;
+    bool buffers_queued = false;
+    bool streaming = false;
 };
 
 } // namespace camstream

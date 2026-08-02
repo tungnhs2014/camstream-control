@@ -1,9 +1,8 @@
 # Stage 8.3 Camera PPI Runtime Flows
 
 Stage 8.3 defines a finite diagnostic flow through `camstream-camera-test`, `CameraSession`, the explicit backend loader,
-and the simulated backend. The original finite lifecycle was validated on the development host. The owner-identity and
-acquire-rollback paths below describe the corrective implementation and remain pending owner revalidation. Buildroot
-and board runtime validation were not performed.
+and the simulated backend. The finite lifecycle and corrective owner-identity and acquire-rollback paths were validated
+on the development host. Buildroot and board runtime validation were not performed.
 
 ## Successful lifecycle sequence
 

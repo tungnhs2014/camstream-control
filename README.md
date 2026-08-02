@@ -83,9 +83,8 @@ Completed engineering checkpoints and validated functionality are:
   Buildroot validation plus accepted BBB service-lifecycle smoke tests
 - Stage 8.2 — GStreamer Service Integration: **COMPLETE**, including service
   ownership of the reusable pipeline and accepted BBB functional validation
-- Stage 8.3 — Camera PPI Core: **CORRECTIVE FIX — OWNER VALIDATION PENDING**;
-  the original focused host validation remains evidence only for its exercised
-  paths
+- Stage 8.3 — Camera PPI Core: **COMPLETE** within its documented host-validation
+  scope, including the corrective cross-session ownership regression
 
 Stage 6B application functionality, documentation, Buildroot integration,
 clean image generation, and packaged BBB/C270 validation are **PASS**. YUYV
@@ -123,10 +122,12 @@ Stage 8.3 introduces the stable Camera PPI C ABI, explicit backend loading,
 the C++17 `CameraSession` ownership wrapper, a simulated backend, and a finite
 diagnostic application. Owner-provided host build and lifecycle evidence,
 failure paths, sanitizers, Valgrind, and 100 repeated executions passed.
-Post-validation review identified a cross-session frame-ownership gap, and
-the corrective fix is **OWNER VALIDATION PENDING**. The original results remain
-valid only for the paths exercised. Buildroot, BeagleBone Black, and Raspberry
-Pi validation were not run for this stage.
+Post-validation review identified and corrected a cross-session frame-ownership
+gap. The ownership regression, corrective ASan/UBSan validation, and corrective
+Valgrind validation passed without changing the Camera PPI C ABI or backend
+ABI. Stage 8.3 is **COMPLETE** within its documented host-validation scope.
+Buildroot, BeagleBone Black, and Raspberry Pi validation were not run for this
+stage.
 
 C270 USB resets and inconsistent real throughput remain tracked as
 [STAGE7-USB-01](docs/validation/stage-07-gstreamer-integration.md). Stable
@@ -187,8 +188,8 @@ camera frames do not belong in this repository.
 | Stage 8.0 — userspace CMake foundation | **COMPLETE** |
 | Stage 8.1 — camera service skeleton | **COMPLETE** |
 | Stage 8.2 — GStreamer Service Integration | **COMPLETE** |
-| Stage 8.3 — Camera PPI Core | **CORRECTIVE FIX — OWNER VALIDATION PENDING** |
-| Stage 8.4 — V4L2 Camera PPI Backend | **PLANNED AFTER STAGE 8.3 REVALIDATION** |
+| Stage 8.3 — Camera PPI Core | **COMPLETE** |
+| Stage 8.4 — V4L2 Camera PPI Backend | **PLANNED** |
 | Stage 8.5 — Raspberry Pi Platform Port | **PLANNED** |
 | Stage 8.6 — custom `camstreamstats` `GstBaseTransform` plugin | **PLANNED** |
 | Stage 8.7 — custom `camstreamsrc` `GstPushSrc` plugin | **PLANNED** |
@@ -196,7 +197,6 @@ camera frames do not belong in this repository.
 | Stage 8.9 — IPC command/control | **PLANNED** |
 | Stage 9 — network camera streaming | **PLANNED** |
 
-Stages 6, 7, 8.0, 8.1, and 8.2 are complete. Stage 8.3 corrective owner
-validation is next; Stage 8.4 remains planned after that gate. Future work must
-preserve the upstream UVC/V4L2 baseline and the evidence boundaries recorded
-above.
+Stages 6, 7, 8.0, 8.1, 8.2, and 8.3 are complete within their documented
+validation scopes. Stage 8.4 remains planned. Future work must preserve the
+upstream UVC/V4L2 baseline and the evidence boundaries recorded above.

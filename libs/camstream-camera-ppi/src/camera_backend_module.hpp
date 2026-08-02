@@ -25,15 +25,15 @@ class CameraBackendModule final {
     const std::string& path() const noexcept;
 
   private:
-    CameraBackendModule(void* handle,
-                        const camstream_camera_backend_v1* descriptor,
-                        std::string backend_name,
-                        std::string backend_path);
+    CameraBackendModule(void* loaded_handle,
+                        const camstream_camera_backend_v1* validated_descriptor,
+                        std::string backend_identity,
+                        std::string module_path);
 
-    void* handle_ = nullptr;
-    const camstream_camera_backend_v1* descriptor_ = nullptr;
-    std::string backend_name_;
-    std::string backend_path_;
+    void* module_handle = nullptr;
+    const camstream_camera_backend_v1* backend_descriptor = nullptr;
+    std::string validated_backend_name;
+    std::string loaded_backend_path;
 };
 
 } // namespace camstream::camera

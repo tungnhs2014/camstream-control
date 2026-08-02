@@ -14,15 +14,14 @@ namespace camstream {
  * idempotent and allows callers to observe cleanup failures.
  */
 class MappedBuffer final {
-public:
+  public:
     /**
      * @brief Takes ownership of a successful mapping.
-     * @param index V4L2 buffer index associated with the mapping.
-     * @param address Address returned by a successful mmap() call.
-     * @param length Exact mapped length returned by VIDIOC_QUERYBUF.
+     * @param v4l2_buffer_index V4L2 buffer index associated with the mapping.
+     * @param mapping_address Address returned by a successful mmap() call.
+     * @param mapping_length Exact mapped length returned by VIDIOC_QUERYBUF.
      */
-    MappedBuffer(std::uint32_t index, void* address,
-                 std::size_t length) noexcept;
+    MappedBuffer(std::uint32_t v4l2_buffer_index, void* mapping_address, std::size_t mapping_length) noexcept;
     ~MappedBuffer();
 
     MappedBuffer(const MappedBuffer&) = delete;
@@ -50,11 +49,11 @@ public:
     std::uint32_t index() const noexcept;
     std::size_t length() const noexcept;
 
-private:
-    std::uint32_t index_ = 0;
-    void* address_ = nullptr;
-    std::size_t length_ = 0;
-    bool owns_mapping_ = false;
+  private:
+    std::uint32_t buffer_index = 0;
+    void* mapped_address = nullptr;
+    std::size_t mapped_length = 0;
+    bool owns_mapping = false;
 };
 
 } // namespace camstream

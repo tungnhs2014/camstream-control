@@ -17,8 +17,7 @@
 #define CAMSTREAM_LUMA_RANGE 219U
 #define CAMSTREAM_PATTERN_SHIFT_PIXELS 8U
 
-static u64
-camstream_frame_interval_ns(const struct camstream_video_device *device)
+static u64 camstream_frame_interval_ns(const struct camstream_video_device *device)
 {
 	u64 interval;
 
@@ -56,8 +55,7 @@ static unsigned long camstream_delay_until(u64 deadline_ns)
 	return max(delay, 1UL);
 }
 
-static bool
-camstream_format_is_safe(const struct v4l2_pix_format *format)
+static bool camstream_format_is_safe(const struct v4l2_pix_format *format)
 {
 	u32 packed_bytesperline;
 	u32 expected_size;
@@ -116,8 +114,7 @@ static void camstream_fill_yuyv(u8 *destination,
 		       first_row, format->bytesperline);
 }
 
-static void
-camstream_advance_deadline_locked(struct camstream_video_device *device)
+static void camstream_advance_deadline_locked(struct camstream_video_device *device)
 {
 	const u64 interval_ns = camstream_frame_interval_ns(device);
 	const u64 now_ns = ktime_get_ns();
@@ -141,8 +138,7 @@ camstream_advance_deadline_locked(struct camstream_video_device *device)
 	device->next_frame_deadline_ns = deadline_ns;
 }
 
-static void
-camstream_schedule_next_locked(struct camstream_video_device *device)
+static void camstream_schedule_next_locked(struct camstream_video_device *device)
 {
 	if (device->streaming && !list_empty(&device->queued_buffers))
 		mod_delayed_work(system_wq, &device->frame_work,
@@ -168,8 +164,8 @@ camstream_take_buffer(struct camstream_video_device *device, u32 *sequence)
 	return buffer;
 }
 
-static bool
-camstream_commit_frame(struct camstream_video_device *device, u32 sequence)
+static bool camstream_commit_frame(struct camstream_video_device *device,
+				   u32 sequence)
 {
 	unsigned long flags;
 	bool commit = false;
@@ -221,9 +217,9 @@ static void camstream_frame_work(struct work_struct *work)
 
 	vb = &buffer->vb.vb2_buf;
 	plane = vb2_plane_vaddr(vb, 0U);
-	valid = plane && vb2_plane_size(vb, 0U) >=
-		 device->active_format.sizeimage &&
-		 camstream_format_is_safe(&device->active_format);
+	valid = plane &&
+		vb2_plane_size(vb, 0U) >= device->active_format.sizeimage &&
+		camstream_format_is_safe(&device->active_format);
 
 	if (valid)
 		camstream_fill_yuyv(plane, &device->active_format, sequence);
