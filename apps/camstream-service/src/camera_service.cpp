@@ -66,8 +66,7 @@ const char* camera_service_state_name(CameraServiceState state) noexcept {
 
 CameraService::CameraService(GstreamerPipelineConfig pipeline_config)
     : finite_pipeline(pipeline_config.buffer_count > 0U),
-      finite_run_timeout(calculate_finite_run_timeout(pipeline_config)),
-      pipeline(std::move(pipeline_config)) {}
+      finite_run_timeout(calculate_finite_run_timeout(pipeline_config)), pipeline(std::move(pipeline_config)) {}
 
 CameraService::~CameraService() noexcept {
     if (!shutdown()) {

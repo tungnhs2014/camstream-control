@@ -104,8 +104,7 @@ static void camstream_fill_yuyv(u8 *destination,
 
 		first_row[offset] = camstream_luma(first, format->width);
 		first_row[offset + 1U] = CAMSTREAM_NEUTRAL_CHROMA;
-		first_row[offset + 2U] = camstream_luma(second,
-							   format->width);
+		first_row[offset + 2U] = camstream_luma(second, format->width);
 		first_row[offset + 3U] = CAMSTREAM_NEUTRAL_CHROMA;
 	}
 
@@ -142,8 +141,7 @@ static void camstream_schedule_next_locked(struct camstream_video_device *device
 {
 	if (device->streaming && !list_empty(&device->queued_buffers))
 		mod_delayed_work(system_wq, &device->frame_work,
-				 camstream_delay_until(
-					 device->next_frame_deadline_ns));
+				 camstream_delay_until(device->next_frame_deadline_ns));
 }
 
 static struct camstream_buffer *
@@ -225,8 +223,7 @@ static void camstream_frame_work(struct work_struct *work)
 		camstream_fill_yuyv(plane, &device->active_format, sequence);
 
 	if (valid && camstream_commit_frame(device, sequence)) {
-		vb2_set_plane_payload(vb, 0U,
-				      device->active_format.sizeimage);
+		vb2_set_plane_payload(vb, 0U, device->active_format.sizeimage);
 		buffer->vb.field = V4L2_FIELD_NONE;
 		buffer->vb.sequence = sequence;
 		vb->timestamp = ktime_get_ns();
@@ -261,8 +258,7 @@ void camstream_frame_start(struct camstream_video_device *device)
 
 	spin_lock_irqsave(&device->queued_lock, flags);
 	device->sequence = 0U;
-	device->next_frame_deadline_ns =
-		ktime_get_ns() + camstream_frame_interval_ns(device);
+	device->next_frame_deadline_ns = ktime_get_ns() + camstream_frame_interval_ns(device);
 	device->streaming = true;
 	camstream_schedule_next_locked(device);
 	spin_unlock_irqrestore(&device->queued_lock, flags);

@@ -91,16 +91,22 @@ class CameraFrame final {
 
     /** @brief Returns whether the frame still represents an outstanding token. */
     bool valid() const noexcept;
+
     /** @brief Returns the backend-provided sequence number. */
     std::uint64_t sequence_number() const noexcept;
+
     /** @brief Returns the monotonic capture timestamp in nanoseconds. */
     std::uint64_t monotonic_timestamp_ns() const noexcept;
+
     /** @brief Returns the active frame width. */
     std::uint32_t width() const noexcept;
+
     /** @brief Returns the active frame height. */
     std::uint32_t height() const noexcept;
+
     /** @brief Returns the project-owned numeric pixel-format code. */
     std::uint32_t pixel_format() const noexcept;
+
     /** @brief Returns the number of valid plane views. */
     std::uint32_t plane_count() const noexcept;
 
@@ -163,17 +169,22 @@ class CameraSession final {
 
     /** @brief Returns the validated module-owned backend name. */
     const std::string& backend_name() const noexcept;
+
     /** @brief Returns the validated backend ABI version. */
     std::uint32_t backend_abi_version() const noexcept;
 
     /** @brief Opens a nonempty backend-specific source from Created state. */
     void open(const std::string& source_identifier);
+
     /** @brief Queries capabilities while the source is open. */
     CameraCapabilities capabilities() const;
+
     /** @brief Returns one indexed supported configuration while open. */
     CameraStreamConfig stream_configuration(std::uint32_t index) const;
+
     /** @brief Configures the open source and returns the active configuration. */
     CameraStreamConfig configure(const CameraStreamConfig& requested);
+
     /** @brief Starts the configured stream. */
     void start();
 
