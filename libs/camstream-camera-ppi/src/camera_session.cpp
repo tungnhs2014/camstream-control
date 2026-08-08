@@ -415,8 +415,7 @@ CameraSession CameraSession::load(const std::string& backend_path) {
     session_implementation->instance = instance;
     if (status != CAMSTREAM_CAMERA_STATUS_OK || instance == nullptr) {
         session_implementation->throw_backend_failure(
-            "create",
-            status != CAMSTREAM_CAMERA_STATUS_OK ? status : CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR);
+            "create", status != CAMSTREAM_CAMERA_STATUS_OK ? status : CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR);
     }
     return CameraSession(std::move(session_implementation));
 }
@@ -527,9 +526,8 @@ CameraFrame CameraSession::acquire_frame() {
 
     try {
         validate_ppi_frame(frame);
-        const auto duplicate = std::find(implementation->outstanding_tokens.begin(),
-                                         implementation->outstanding_tokens.end(),
-                                         frame.frame_token);
+        const auto duplicate = std::find(
+            implementation->outstanding_tokens.begin(), implementation->outstanding_tokens.end(), frame.frame_token);
         if (duplicate != implementation->outstanding_tokens.end()) {
             throw_contract_error("acquire_frame", "backend returned a duplicate frame token");
         }
@@ -558,9 +556,8 @@ void CameraSession::release_frame(CameraFrame& frame) {
         throw CameraError("Camera frame belongs to a different session", CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT);
     }
 
-    const auto token = std::find(implementation->outstanding_tokens.begin(),
-                                 implementation->outstanding_tokens.end(),
-                                 frame.frame_token);
+    const auto token = std::find(
+        implementation->outstanding_tokens.begin(), implementation->outstanding_tokens.end(), frame.frame_token);
     if (token == implementation->outstanding_tokens.end()) {
         throw CameraError("Camera frame does not belong to this session", CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT);
     }

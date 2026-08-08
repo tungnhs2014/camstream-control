@@ -126,14 +126,11 @@ typedef camstream_camera_status_t (*camstream_camera_close_v1_fn)(camstream_came
 
 /** @brief Reports bounded capabilities for an open source. */
 typedef camstream_camera_status_t (*camstream_camera_get_capabilities_v1_fn)(
-    camstream_camera_instance* instance,
-    camstream_camera_capabilities_v1* capabilities);
+    camstream_camera_instance* instance, camstream_camera_capabilities_v1* capabilities);
 
 /** @brief Returns one supported configuration by zero-based index. */
 typedef camstream_camera_status_t (*camstream_camera_get_stream_configuration_v1_fn)(
-    camstream_camera_instance* instance,
-    uint32_t index,
-    camstream_camera_stream_config_v1* configuration);
+    camstream_camera_instance* instance, uint32_t index, camstream_camera_stream_config_v1* configuration);
 
 /** @brief Applies a request and reports the backend's active configuration. */
 typedef camstream_camera_status_t (*camstream_camera_configure_v1_fn)(

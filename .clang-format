@@ -13,8 +13,8 @@ BreakBeforeBraces: Attach
 AlignAfterOpenBracket: Align
 BinPackArguments: false
 BinPackParameters: false
-AllowAllArgumentsOnNextLine: false
-AllowAllParametersOfDeclarationOnNextLine: false
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
 AllowShortFunctionsOnASingleLine: Empty
 PenaltyReturnTypeOnItsOwnLine: 1000
 SortIncludes: true
