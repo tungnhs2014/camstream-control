@@ -10,8 +10,14 @@ explicit ownership, and strict C ABI design. The project does **not** claim MISR
 - Use C++17 for project-owned userspace C++.
 - Format project-owned userspace C and C++ with the root `.clang-format`.
 - Use four spaces rather than tabs and a maximum line length of 120 columns.
-- Use attached braces, left-aligned pointers and references, the include ordering produced by `.clang-format`, and one
-  blank line between logical sections.
+- Use attached braces, left-aligned pointers and references, and the include ordering produced by `.clang-format`.
+- Use exactly one blank line between namespace-scope function definitions, between out-of-class C++ method definitions,
+  and between one function definition and the next function definition.
+- Use exactly one blank line between a type or object definition and the next independent logical declaration, before a
+  Doxygen or kernel-doc block for the next independent declaration, and between include groups and following macro or
+  declaration sections where appropriate.
+- Do not insert blank lines mechanically inside tightly related declaration groups. Keep `MaxEmptyLinesToKeep: 1` in
+  `.clang-format`; formatting tools supplement rather than replace the manual readability review.
 - Keep short declarations on one line when readable. Once a declaration becomes multiline, put one parameter on each
   line and do not bin-pack remaining parameters.
 - Apply formatting only to the files in scope for the change; avoid unrelated repository-wide churn.
@@ -81,7 +87,10 @@ retained.
 - Include explicit ABI version and structure-size fields in extensible ABI structures.
 - Validate ABI version, minimum structure size, mandatory callbacks, and bounded strings before use.
 - Document descriptor, instance, frame, and module lifetime with Doxygen.
-- Keep exported symbols intentional and avoid hidden constructor-based registration.
+- Keep exported symbols and runtime registration mechanisms intentional and documented. Constructor-based registration
+  is permitted only for explicitly designed plugin or HAL registration paths. Such constructors perform registration
+  only, avoid runtime resource acquisition and device I/O, and rely on the receiving layer to validate the registered
+  ABI and mandatory callbacks before use.
 
 ### Names, comments, and public documentation
 
