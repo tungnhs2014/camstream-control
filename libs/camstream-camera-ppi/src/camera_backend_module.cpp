@@ -108,11 +108,8 @@ std::unique_ptr<CameraBackendModule> CameraBackendModule::load(const std::string
         throw_loader_error(backend_path, "backend descriptor has a missing mandatory callback");
     }
 
-    auto module = std::unique_ptr<CameraBackendModule>(
-        new CameraBackendModule(handle.get(),
-                                backend,
-                                std::string(backend->backend_name, backend_name_length),
-                                backend_path));
+    auto module = std::unique_ptr<CameraBackendModule>(new CameraBackendModule(
+        handle.get(), backend, std::string(backend->backend_name, backend_name_length), backend_path));
     static_cast<void>(handle.release());
     return module;
 }

@@ -18,10 +18,20 @@ explicit ownership, and strict C ABI design. The project does **not** claim MISR
   declaration sections where appropriate.
 - Do not insert blank lines mechanically inside tightly related declaration groups. Keep `MaxEmptyLinesToKeep: 1` in
   `.clang-format`; formatting tools supplement rather than replace the manual readability review.
-- Keep short declarations on one line when readable. Once a declaration becomes multiline, put one parameter on each
-  line and do not bin-pack remaining parameters.
 - Apply formatting only to the files in scope for the change; avoid unrelated repository-wide churn.
 - Keep target-based CMake configuration and target-scoped compile features, include directories, warnings, and links.
+
+### Line wrapping and compact formatting
+
+- Prefer keeping declarations, statements, function calls, and simple expressions on one line when they fit within the
+  configured column limit and remain readable.
+- Do not introduce multiline formatting solely because a construct contains multiple arguments or parameters.
+- Break lines when the configured limit would be exceeded, when an expression is genuinely complex, or when multiline
+  structure materially improves readability.
+- Keep logical structure visible when compacting a construct would obscure independent conditions, lifecycle steps, or
+  ownership relationships. Compact formatting is not a requirement to minimize line count.
+- Project-owned userspace C and C++ use the root `.clang-format` configuration and its 120-column limit. Linux kernel
+  driver code follows Linux kernel coding conventions separately and is never formatted with the userspace rules.
 
 ### Naming
 

@@ -102,12 +102,10 @@ class DirectBackendProbe final {
         require_status(backend->release_frame(instance_b, frame_b.frame_token + UINT64_C(1000)),
                        CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT,
                        "release untracked token");
-        require_status(backend->release_frame(instance_a, frame_a.frame_token),
-                       CAMSTREAM_CAMERA_STATUS_OK,
-                       "release frame A");
-        require_status(backend->release_frame(instance_b, frame_b.frame_token),
-                       CAMSTREAM_CAMERA_STATUS_OK,
-                       "release frame B");
+        require_status(
+            backend->release_frame(instance_a, frame_a.frame_token), CAMSTREAM_CAMERA_STATUS_OK, "release frame A");
+        require_status(
+            backend->release_frame(instance_b, frame_b.frame_token), CAMSTREAM_CAMERA_STATUS_OK, "release frame B");
         finish(instance_a);
         finish(instance_b);
     }

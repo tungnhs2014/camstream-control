@@ -79,10 +79,8 @@ void clear_error(SimulatedCamera* camera) noexcept {
 
 camstream_camera_status_t internal_exception(SimulatedCamera* camera, const char* operation) noexcept {
     char message[128]{};
-    static_cast<void>(std::snprintf(message,
-                                    sizeof(message),
-                                    "internal exception in %s",
-                                    operation != nullptr ? operation : "backend callback"));
+    static_cast<void>(std::snprintf(
+        message, sizeof(message), "internal exception in %s", operation != nullptr ? operation : "backend callback"));
     return set_error(camera, CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR, message);
 }
 
@@ -196,9 +194,8 @@ extern "C" camstream_camera_status_t simulated_open(camstream_camera_instance* i
             return set_error(camera, CAMSTREAM_CAMERA_STATUS_INVALID_STATE, "open requires Created state");
         }
         if (std::strcmp(source_identifier, kSourceIdentifier) != 0) {
-            return set_error(camera,
-                             CAMSTREAM_CAMERA_STATUS_NOT_SUPPORTED,
-                             "simulated backend supports only source simulated0");
+            return set_error(
+                camera, CAMSTREAM_CAMERA_STATUS_NOT_SUPPORTED, "simulated backend supports only source simulated0");
         }
 
         camera->state = SimulatedState::Open;
@@ -223,9 +220,8 @@ extern "C" camstream_camera_status_t simulated_close(camstream_camera_instance* 
             return set_error(camera, CAMSTREAM_CAMERA_STATUS_INVALID_STATE, "close requires stop first");
         }
         if (has_outstanding_frame(*camera)) {
-            return set_error(camera,
-                             CAMSTREAM_CAMERA_STATUS_INVALID_STATE,
-                             "close requires every frame to be released");
+            return set_error(
+                camera, CAMSTREAM_CAMERA_STATUS_INVALID_STATE, "close requires every frame to be released");
         }
 
         camera->state = SimulatedState::Created;
@@ -242,9 +238,8 @@ extern "C" camstream_camera_status_t simulated_get_capabilities(camstream_camera
     try {
         if (camera == nullptr || capabilities == nullptr ||
             !valid_header(capabilities->abi_version, capabilities->struct_size, sizeof(*capabilities))) {
-            return set_error(camera,
-                             CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT,
-                             "get_capabilities received invalid output storage");
+            return set_error(
+                camera, CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT, "get_capabilities received invalid output storage");
         }
         if (camera->state != SimulatedState::Open && camera->state != SimulatedState::Configured) {
             return set_error(camera, CAMSTREAM_CAMERA_STATUS_INVALID_STATE, "get_capabilities requires an open source");
@@ -263,9 +258,7 @@ extern "C" camstream_camera_status_t simulated_get_capabilities(camstream_camera
 }
 
 extern "C" camstream_camera_status_t simulated_get_stream_configuration(
-    camstream_camera_instance* instance,
-    std::uint32_t index,
-    camstream_camera_stream_config_v1* configuration) {
+    camstream_camera_instance* instance, std::uint32_t index, camstream_camera_stream_config_v1* configuration) {
     SimulatedCamera* const camera = camera_from(instance);
     try {
         if (camera == nullptr || configuration == nullptr ||
@@ -275,14 +268,12 @@ extern "C" camstream_camera_status_t simulated_get_stream_configuration(
                              "get_stream_configuration received invalid output storage");
         }
         if (camera->state != SimulatedState::Open) {
-            return set_error(camera,
-                             CAMSTREAM_CAMERA_STATUS_INVALID_STATE,
-                             "get_stream_configuration requires Open state");
+            return set_error(
+                camera, CAMSTREAM_CAMERA_STATUS_INVALID_STATE, "get_stream_configuration requires Open state");
         }
         if (index != 0U) {
-            return set_error(camera,
-                             CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT,
-                             "stream-configuration index is out of range");
+            return set_error(
+                camera, CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT, "stream-configuration index is out of range");
         }
 
         fill_supported_configuration(*configuration);
@@ -374,9 +365,8 @@ extern "C" camstream_camera_status_t simulated_acquire_frame(camstream_camera_in
     try {
         if (camera == nullptr || frame == nullptr ||
             !valid_header(frame->abi_version, frame->struct_size, sizeof(*frame))) {
-            return set_error(camera,
-                             CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT,
-                             "acquire_frame received invalid output storage");
+            return set_error(
+                camera, CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT, "acquire_frame received invalid output storage");
         }
         if (camera->state != SimulatedState::Started) {
             return set_error(camera, CAMSTREAM_CAMERA_STATUS_INVALID_STATE, "acquire_frame requires Started state");
@@ -384,9 +374,8 @@ extern "C" camstream_camera_status_t simulated_acquire_frame(camstream_camera_in
 
         SimulatedBuffer* const buffer = find_available_buffer(*camera);
         if (buffer == nullptr) {
-            return set_error(camera,
-                             CAMSTREAM_CAMERA_STATUS_RESOURCE_ERROR,
-                             "all simulated frame buffers are outstanding");
+            return set_error(
+                camera, CAMSTREAM_CAMERA_STATUS_RESOURCE_ERROR, "all simulated frame buffers are outstanding");
         }
 
         const std::uint64_t sequence = camera->next_sequence++;
@@ -428,9 +417,8 @@ extern "C" camstream_camera_status_t simulated_release_frame(camstream_camera_in
     SimulatedCamera* const camera = camera_from(instance);
     try {
         if (camera == nullptr || frame_token == 0U) {
-            return set_error(camera,
-                             CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT,
-                             "release_frame requires a nonzero token");
+            return set_error(
+                camera, CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT, "release_frame requires a nonzero token");
         }
         if (camera->state != SimulatedState::Started) {
             return set_error(camera, CAMSTREAM_CAMERA_STATUS_INVALID_STATE, "release_frame requires Started state");
@@ -438,9 +426,8 @@ extern "C" camstream_camera_status_t simulated_release_frame(camstream_camera_in
 
         SimulatedBuffer* const buffer = find_token(*camera, frame_token);
         if (buffer == nullptr) {
-            return set_error(camera,
-                             CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT,
-                             "frame token is unknown or already released");
+            return set_error(
+                camera, CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT, "frame token is unknown or already released");
         }
         buffer->outstanding = false;
         buffer->token = 0U;
