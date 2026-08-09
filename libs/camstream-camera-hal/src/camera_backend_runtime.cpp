@@ -415,7 +415,6 @@ camstream_camera_status_t register_backend(const camstream_camera_backend_v1* ba
 
 } // namespace camstream::camera::detail
 
-extern "C" camstream_camera_status_t
-camstream_camera_hal_register_backend_v1(const camstream_camera_backend_v1* backend) {
+camstream_camera_status_t camstream_camera_hal_register_backend_v1(const camstream_camera_backend_v1* backend) {
     return camstream::camera::detail::register_backend(backend);
 }

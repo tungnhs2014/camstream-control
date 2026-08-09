@@ -160,7 +160,9 @@ SimulatedBuffer* find_token(SimulatedCamera& camera, std::uint64_t token) noexce
     return nullptr;
 }
 
-extern "C" camstream_camera_status_t simulated_create(camstream_camera_instance** instance) {
+extern "C" {
+
+static camstream_camera_status_t simulated_create(camstream_camera_instance** instance) {
     if (instance == nullptr) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
     }
@@ -176,15 +178,14 @@ extern "C" camstream_camera_status_t simulated_create(camstream_camera_instance*
     }
 }
 
-extern "C" void simulated_destroy(camstream_camera_instance* instance) {
+static void simulated_destroy(camstream_camera_instance* instance) {
     try {
         delete camera_from(instance);
     } catch (...) {
     }
 }
 
-extern "C" camstream_camera_status_t simulated_open(camstream_camera_instance* instance,
-                                                    const char* source_identifier) {
+static camstream_camera_status_t simulated_open(camstream_camera_instance* instance, const char* source_identifier) {
     SimulatedCamera* const camera = camera_from(instance);
     try {
         if (camera == nullptr || source_identifier == nullptr || source_identifier[0] == '\0') {
@@ -206,7 +207,7 @@ extern "C" camstream_camera_status_t simulated_open(camstream_camera_instance* i
     }
 }
 
-extern "C" camstream_camera_status_t simulated_close(camstream_camera_instance* instance) {
+static camstream_camera_status_t simulated_close(camstream_camera_instance* instance) {
     SimulatedCamera* const camera = camera_from(instance);
     try {
         if (camera == nullptr) {
@@ -232,8 +233,8 @@ extern "C" camstream_camera_status_t simulated_close(camstream_camera_instance* 
     }
 }
 
-extern "C" camstream_camera_status_t simulated_get_capabilities(camstream_camera_instance* instance,
-                                                                camstream_camera_capabilities_v1* capabilities) {
+static camstream_camera_status_t simulated_get_capabilities(camstream_camera_instance* instance,
+                                                             camstream_camera_capabilities_v1* capabilities) {
     SimulatedCamera* const camera = camera_from(instance);
     try {
         if (camera == nullptr || capabilities == nullptr ||
@@ -257,7 +258,7 @@ extern "C" camstream_camera_status_t simulated_get_capabilities(camstream_camera
     }
 }
 
-extern "C" camstream_camera_status_t simulated_get_stream_configuration(
+static camstream_camera_status_t simulated_get_stream_configuration(
     camstream_camera_instance* instance, std::uint32_t index, camstream_camera_stream_config_v1* configuration) {
     SimulatedCamera* const camera = camera_from(instance);
     try {
@@ -284,9 +285,9 @@ extern "C" camstream_camera_status_t simulated_get_stream_configuration(
     }
 }
 
-extern "C" camstream_camera_status_t simulated_configure(camstream_camera_instance* instance,
-                                                         const camstream_camera_stream_config_v1* requested,
-                                                         camstream_camera_stream_config_v1* active) {
+static camstream_camera_status_t simulated_configure(camstream_camera_instance* instance,
+                                                      const camstream_camera_stream_config_v1* requested,
+                                                      camstream_camera_stream_config_v1* active) {
     SimulatedCamera* const camera = camera_from(instance);
     try {
         if (camera == nullptr || requested == nullptr || active == nullptr ||
@@ -312,7 +313,7 @@ extern "C" camstream_camera_status_t simulated_configure(camstream_camera_instan
     }
 }
 
-extern "C" camstream_camera_status_t simulated_start(camstream_camera_instance* instance) {
+static camstream_camera_status_t simulated_start(camstream_camera_instance* instance) {
     SimulatedCamera* const camera = camera_from(instance);
     try {
         if (camera == nullptr) {
@@ -337,8 +338,7 @@ extern "C" camstream_camera_status_t simulated_start(camstream_camera_instance* 
     }
 }
 
-extern "C" camstream_camera_status_t simulated_wait_frame(camstream_camera_instance* instance,
-                                                          std::uint32_t timeout_ms) {
+static camstream_camera_status_t simulated_wait_frame(camstream_camera_instance* instance, std::uint32_t timeout_ms) {
     SimulatedCamera* const camera = camera_from(instance);
     try {
         static_cast<void>(timeout_ms);
@@ -359,8 +359,8 @@ extern "C" camstream_camera_status_t simulated_wait_frame(camstream_camera_insta
     }
 }
 
-extern "C" camstream_camera_status_t simulated_acquire_frame(camstream_camera_instance* instance,
-                                                             camstream_camera_frame_v1* frame) {
+static camstream_camera_status_t simulated_acquire_frame(camstream_camera_instance* instance,
+                                                         camstream_camera_frame_v1* frame) {
     SimulatedCamera* const camera = camera_from(instance);
     try {
         if (camera == nullptr || frame == nullptr ||
@@ -412,8 +412,8 @@ extern "C" camstream_camera_status_t simulated_acquire_frame(camstream_camera_in
     }
 }
 
-extern "C" camstream_camera_status_t simulated_release_frame(camstream_camera_instance* instance,
-                                                             std::uint64_t frame_token) {
+static camstream_camera_status_t simulated_release_frame(camstream_camera_instance* instance,
+                                                         std::uint64_t frame_token) {
     SimulatedCamera* const camera = camera_from(instance);
     try {
         if (camera == nullptr || frame_token == 0U) {
@@ -438,7 +438,7 @@ extern "C" camstream_camera_status_t simulated_release_frame(camstream_camera_in
     }
 }
 
-extern "C" camstream_camera_status_t simulated_stop(camstream_camera_instance* instance) {
+static camstream_camera_status_t simulated_stop(camstream_camera_instance* instance) {
     SimulatedCamera* const camera = camera_from(instance);
     try {
         if (camera == nullptr) {
@@ -463,9 +463,9 @@ extern "C" camstream_camera_status_t simulated_stop(camstream_camera_instance* i
     }
 }
 
-extern "C" camstream_camera_status_t simulated_get_last_error(camstream_camera_instance* instance,
-                                                              char* buffer,
-                                                              std::uint32_t buffer_size) {
+static camstream_camera_status_t simulated_get_last_error(camstream_camera_instance* instance,
+                                                          char* buffer,
+                                                          std::uint32_t buffer_size) {
     const SimulatedCamera* const camera = camera_from(instance);
     try {
         if (camera == nullptr || buffer == nullptr || buffer_size == 0U) {
@@ -484,6 +484,8 @@ extern "C" camstream_camera_status_t simulated_get_last_error(camstream_camera_i
         return CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR;
     }
 }
+
+} // extern "C"
 
 const camstream_camera_backend_v1 kBackendDescriptor{
     CAMSTREAM_CAMERA_ABI_VERSION_V1,
