@@ -32,19 +32,19 @@ struct camstream_camera {
     camstream_camera_instance* instance;
 };
 
-extern "C" camstream_camera_status_t camstream_camera_hal_load_backend(const char* backend_path) {
+camstream_camera_status_t camstream_camera_hal_load_backend(const char* backend_path) {
     return camstream::camera::detail::load_backend(backend_path);
 }
 
-extern "C" camstream_camera_status_t camstream_camera_hal_unload_backend(void) {
+camstream_camera_status_t camstream_camera_hal_unload_backend(void) {
     return camstream::camera::detail::unload_backend();
 }
 
-extern "C" camstream_camera_status_t camstream_camera_hal_get_last_error(char* buffer, uint32_t buffer_size) {
+camstream_camera_status_t camstream_camera_hal_get_last_error(char* buffer, uint32_t buffer_size) {
     return camstream::camera::detail::copy_runtime_error(buffer, buffer_size);
 }
 
-extern "C" camstream_camera_status_t camstream_camera_create(camstream_camera** camera) {
+camstream_camera_status_t camstream_camera_create(camstream_camera** camera) {
     if (camera == nullptr) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
     }
@@ -105,7 +105,7 @@ extern "C" camstream_camera_status_t camstream_camera_create(camstream_camera** 
     return status;
 }
 
-extern "C" void camstream_camera_destroy(camstream_camera* camera) {
+void camstream_camera_destroy(camstream_camera* camera) {
     if (camera == nullptr) {
         return;
     }
@@ -117,8 +117,9 @@ extern "C" void camstream_camera_destroy(camstream_camera* camera) {
     camstream::camera::detail::record_instance_destroyed();
 }
 
-extern "C" camstream_camera_status_t
-camstream_camera_get_backend_name(camstream_camera* camera, char* buffer, uint32_t buffer_size) {
+camstream_camera_status_t camstream_camera_get_backend_name(camstream_camera* camera,
+                                                            char* buffer,
+                                                            uint32_t buffer_size) {
     if (camera == nullptr || buffer == nullptr || buffer_size == 0U) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
     }
@@ -132,8 +133,7 @@ camstream_camera_get_backend_name(camstream_camera* camera, char* buffer, uint32
     return CAMSTREAM_CAMERA_STATUS_OK;
 }
 
-extern "C" camstream_camera_status_t
-camstream_camera_get_backend_abi_version(camstream_camera* camera, uint32_t* abi_version) {
+camstream_camera_status_t camstream_camera_get_backend_abi_version(camstream_camera* camera, uint32_t* abi_version) {
     if (camera == nullptr || abi_version == nullptr) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
     }
@@ -141,8 +141,7 @@ camstream_camera_get_backend_abi_version(camstream_camera* camera, uint32_t* abi
     return CAMSTREAM_CAMERA_STATUS_OK;
 }
 
-extern "C" camstream_camera_status_t camstream_camera_open(camstream_camera* camera,
-                                                            const char* source_identifier) {
+camstream_camera_status_t camstream_camera_open(camstream_camera* camera, const char* source_identifier) {
     if (camera == nullptr || !valid_source_identifier(source_identifier)) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
     }
@@ -153,7 +152,7 @@ extern "C" camstream_camera_status_t camstream_camera_open(camstream_camera* cam
     }
 }
 
-extern "C" camstream_camera_status_t camstream_camera_close(camstream_camera* camera) {
+camstream_camera_status_t camstream_camera_close(camstream_camera* camera) {
     if (camera == nullptr) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
     }
@@ -164,8 +163,8 @@ extern "C" camstream_camera_status_t camstream_camera_close(camstream_camera* ca
     }
 }
 
-extern "C" camstream_camera_status_t
-camstream_camera_get_capabilities(camstream_camera* camera, camstream_camera_capabilities_v1* capabilities) {
+camstream_camera_status_t camstream_camera_get_capabilities(camstream_camera* camera,
+                                                            camstream_camera_capabilities_v1* capabilities) {
     if (camera == nullptr || capabilities == nullptr ||
         !valid_header(capabilities->abi_version, capabilities->struct_size, sizeof(*capabilities))) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
@@ -177,7 +176,7 @@ camstream_camera_get_capabilities(camstream_camera* camera, camstream_camera_cap
     }
 }
 
-extern "C" camstream_camera_status_t camstream_camera_get_stream_configuration(
+camstream_camera_status_t camstream_camera_get_stream_configuration(
     camstream_camera* camera, uint32_t index, camstream_camera_stream_config_v1* configuration) {
     if (camera == nullptr || configuration == nullptr ||
         !valid_header(configuration->abi_version, configuration->struct_size, sizeof(*configuration))) {
@@ -190,7 +189,7 @@ extern "C" camstream_camera_status_t camstream_camera_get_stream_configuration(
     }
 }
 
-extern "C" camstream_camera_status_t camstream_camera_configure(
+camstream_camera_status_t camstream_camera_configure(
     camstream_camera* camera,
     const camstream_camera_stream_config_v1* requested,
     camstream_camera_stream_config_v1* active) {
@@ -206,7 +205,7 @@ extern "C" camstream_camera_status_t camstream_camera_configure(
     }
 }
 
-extern "C" camstream_camera_status_t camstream_camera_start(camstream_camera* camera) {
+camstream_camera_status_t camstream_camera_start(camstream_camera* camera) {
     if (camera == nullptr) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
     }
@@ -217,7 +216,7 @@ extern "C" camstream_camera_status_t camstream_camera_start(camstream_camera* ca
     }
 }
 
-extern "C" camstream_camera_status_t camstream_camera_wait_frame(camstream_camera* camera, uint32_t timeout_ms) {
+camstream_camera_status_t camstream_camera_wait_frame(camstream_camera* camera, uint32_t timeout_ms) {
     if (camera == nullptr) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
     }
@@ -228,8 +227,7 @@ extern "C" camstream_camera_status_t camstream_camera_wait_frame(camstream_camer
     }
 }
 
-extern "C" camstream_camera_status_t
-camstream_camera_acquire_frame(camstream_camera* camera, camstream_camera_frame_v1* frame) {
+camstream_camera_status_t camstream_camera_acquire_frame(camstream_camera* camera, camstream_camera_frame_v1* frame) {
     if (camera == nullptr || frame == nullptr ||
         !valid_header(frame->abi_version, frame->struct_size, sizeof(*frame))) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
@@ -241,7 +239,7 @@ camstream_camera_acquire_frame(camstream_camera* camera, camstream_camera_frame_
     }
 }
 
-extern "C" camstream_camera_status_t camstream_camera_release_frame(camstream_camera* camera, uint64_t frame_token) {
+camstream_camera_status_t camstream_camera_release_frame(camstream_camera* camera, uint64_t frame_token) {
     if (camera == nullptr || frame_token == 0U) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
     }
@@ -252,7 +250,7 @@ extern "C" camstream_camera_status_t camstream_camera_release_frame(camstream_ca
     }
 }
 
-extern "C" camstream_camera_status_t camstream_camera_stop(camstream_camera* camera) {
+camstream_camera_status_t camstream_camera_stop(camstream_camera* camera) {
     if (camera == nullptr) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
     }
@@ -263,8 +261,9 @@ extern "C" camstream_camera_status_t camstream_camera_stop(camstream_camera* cam
     }
 }
 
-extern "C" camstream_camera_status_t
-camstream_camera_get_last_error(camstream_camera* camera, char* buffer, uint32_t buffer_size) {
+camstream_camera_status_t camstream_camera_get_last_error(camstream_camera* camera,
+                                                          char* buffer,
+                                                          uint32_t buffer_size) {
     if (camera == nullptr || buffer == nullptr || buffer_size == 0U) {
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
     }
