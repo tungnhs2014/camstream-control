@@ -1,5 +1,7 @@
 #include "camera_backend_runtime.hpp"
 
+#include <camstream/logging.hpp>
+
 #include <condition_variable>
 #include <cstddef>
 #include <dlfcn.h>
@@ -33,6 +35,7 @@ struct BackendRuntime {
     bool registration_attempted = false;
     std::uint32_t client_count = 0U;
     std::uint32_t live_instance_count = 0U;
+    std::uint32_t create_reservation_count = 0U;
 };
 
 BackendRuntime& runtime() {
@@ -94,6 +97,7 @@ void reset_loaded_fields(BackendRuntime& value) noexcept {
     value.registration_attempted = false;
     value.client_count = 0U;
     value.live_instance_count = 0U;
+    value.create_reservation_count = 0U;
 }
 
 bool finish_failed_load(BackendRuntime& value, void* handle, const std::string& load_error) noexcept {
@@ -112,6 +116,7 @@ bool finish_failed_load(BackendRuntime& value, void* handle, const std::string& 
             value.module_handle = handle;
             value.client_count = 0U;
             value.live_instance_count = 0U;
+            value.create_reservation_count = 0U;
             value.state = LoadState::Unloading;
             value.last_error = load_error;
         }
@@ -137,6 +142,7 @@ bool finish_failed_load(BackendRuntime& value, void* handle, const std::string& 
         }
         return close_result == 0;
     } catch (...) {
+        LOGE("Camera backend load cleanup failed unexpectedly");
         try {
             std::lock_guard<std::mutex> lock(value.mutex);
             value.module_handle = handle;
@@ -145,9 +151,11 @@ bool finish_failed_load(BackendRuntime& value, void* handle, const std::string& 
             value.registration_attempted = false;
             value.client_count = 0U;
             value.live_instance_count = 0U;
+            value.create_reservation_count = 0U;
             value.state = LoadState::Faulted;
             value.state_changed.notify_all();
         } catch (...) {
+            LOGE("Camera backend runtime could not record the failed-load state");
         }
         return false;
     }
@@ -162,6 +170,7 @@ camstream_camera_status_t load_backend(const char* backend_path) noexcept {
             std::lock_guard<std::mutex> lock(value.mutex);
             value.last_error = "camera backend path must not be empty";
         } catch (...) {
+            LOGE("Camera backend runtime could not retain an invalid-path diagnostic");
         }
         return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
     }
@@ -173,9 +182,8 @@ camstream_camera_status_t load_backend(const char* backend_path) noexcept {
         const std::string requested_path(backend_path);
         {
             std::unique_lock<std::mutex> lock(value.mutex);
-            value.state_changed.wait(lock, [&value] {
-                return value.state != LoadState::Loading && value.state != LoadState::Unloading;
-            });
+            value.state_changed.wait(
+                lock, [&value] { return value.state != LoadState::Loading && value.state != LoadState::Unloading; });
             if (value.state == LoadState::Faulted) {
                 return CAMSTREAM_CAMERA_STATUS_RESOURCE_ERROR;
             }
@@ -224,6 +232,7 @@ camstream_camera_status_t load_backend(const char* backend_path) noexcept {
                 value.module_handle = handle;
                 value.client_count = 1U;
                 value.live_instance_count = 0U;
+                value.create_reservation_count = 0U;
                 value.state = LoadState::Loaded;
                 value.last_error.clear();
                 loading_started = false;
@@ -238,6 +247,7 @@ camstream_camera_status_t load_backend(const char* backend_path) noexcept {
         }
         return load_status;
     } catch (...) {
+        LOGE("Unexpected exception while loading camera backend '" << backend_path << "'");
         if (loading_started) {
             if (!finish_failed_load(value, handle, "internal exception while loading camera backend")) {
                 return CAMSTREAM_CAMERA_STATUS_RESOURCE_ERROR;
@@ -254,9 +264,8 @@ camstream_camera_status_t unload_backend() noexcept {
         std::string backend_path;
         {
             std::unique_lock<std::mutex> lock(value.mutex);
-            value.state_changed.wait(lock, [&value] {
-                return value.state != LoadState::Loading && value.state != LoadState::Unloading;
-            });
+            value.state_changed.wait(
+                lock, [&value] { return value.state != LoadState::Loading && value.state != LoadState::Unloading; });
             if (value.state == LoadState::Faulted) {
                 return CAMSTREAM_CAMERA_STATUS_RESOURCE_ERROR;
             }
@@ -268,8 +277,8 @@ camstream_camera_status_t unload_backend() noexcept {
                 --value.client_count;
                 return CAMSTREAM_CAMERA_STATUS_OK;
             }
-            if (value.live_instance_count != 0U) {
-                value.last_error = "camera backend cannot unload while HAL instances remain alive";
+            if (value.live_instance_count != 0U || value.create_reservation_count != 0U) {
+                value.last_error = "camera backend cannot unload while HAL instances or creates remain active";
                 return CAMSTREAM_CAMERA_STATUS_INVALID_STATE;
             }
             if (value.module_handle == nullptr) {
@@ -302,15 +311,17 @@ camstream_camera_status_t unload_backend() noexcept {
                 value.registration_attempted = false;
                 value.state = LoadState::Faulted;
                 try {
-                    value.last_error = "dlclose failed for camera backend '" + backend_path + "': " +
-                                       (close_error != nullptr ? close_error : "unknown error");
+                    value.last_error = "dlclose failed for camera backend '" + backend_path +
+                                       "': " + (close_error != nullptr ? close_error : "unknown error");
                 } catch (...) {
+                    LOGE("Camera backend runtime could not retain the dlclose diagnostic");
                 }
             }
             value.state_changed.notify_all();
         }
         return close_result == 0 ? CAMSTREAM_CAMERA_STATUS_OK : CAMSTREAM_CAMERA_STATUS_RESOURCE_ERROR;
     } catch (...) {
+        LOGE("Unexpected exception while unloading the camera backend");
         try {
             BackendRuntime& value = runtime();
             std::lock_guard<std::mutex> lock(value.mutex);
@@ -320,10 +331,12 @@ camstream_camera_status_t unload_backend() noexcept {
                 value.registration_attempted = false;
                 value.client_count = 0U;
                 value.live_instance_count = 0U;
+                value.create_reservation_count = 0U;
                 value.state = LoadState::Faulted;
                 value.state_changed.notify_all();
             }
         } catch (...) {
+            LOGE("Camera backend runtime could not record the failed-unload state");
         }
         return CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR;
     }
@@ -342,6 +355,7 @@ camstream_camera_status_t copy_runtime_error(char* buffer, std::uint32_t buffer_
         buffer[length] = '\0';
         return CAMSTREAM_CAMERA_STATUS_OK;
     } catch (...) {
+        LOGE("Camera backend runtime could not copy its diagnostic");
         buffer[0] = '\0';
         return CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR;
     }
@@ -353,19 +367,57 @@ void set_runtime_error(const char* error) noexcept {
         std::lock_guard<std::mutex> lock(value.mutex);
         value.last_error = error != nullptr ? error : "unknown Camera HAL runtime error";
     } catch (...) {
+        LOGE("Camera backend runtime could not retain diagnostic text");
     }
 }
 
-const camstream_camera_backend_v1* active_backend() noexcept {
+camstream_camera_status_t reserve_backend_for_create(const camstream_camera_backend_v1** backend) noexcept {
+    if (backend == nullptr) {
+        return CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT;
+    }
+    *backend = nullptr;
+
     BackendRuntime& value = runtime();
     std::lock_guard<std::mutex> lock(value.mutex);
-    return value.state == LoadState::Loaded && value.client_count > 0U ? value.backend : nullptr;
+    if (value.state != LoadState::Loaded || value.client_count == 0U || value.module_handle == nullptr ||
+        value.backend == nullptr) {
+        return CAMSTREAM_CAMERA_STATUS_INVALID_STATE;
+    }
+    if (value.create_reservation_count == std::numeric_limits<std::uint32_t>::max()) {
+        return CAMSTREAM_CAMERA_STATUS_RESOURCE_ERROR;
+    }
+
+    ++value.create_reservation_count;
+    *backend = value.backend;
+    return CAMSTREAM_CAMERA_STATUS_OK;
 }
 
-void record_instance_created() noexcept {
+camstream_camera_status_t commit_backend_creation() noexcept {
     BackendRuntime& value = runtime();
     std::lock_guard<std::mutex> lock(value.mutex);
+    if (value.state != LoadState::Loaded || value.client_count == 0U || value.module_handle == nullptr ||
+        value.backend == nullptr || value.create_reservation_count == 0U) {
+        return CAMSTREAM_CAMERA_STATUS_INVALID_STATE;
+    }
+    if (value.live_instance_count == std::numeric_limits<std::uint32_t>::max()) {
+        return CAMSTREAM_CAMERA_STATUS_RESOURCE_ERROR;
+    }
+
+    --value.create_reservation_count;
     ++value.live_instance_count;
+    return CAMSTREAM_CAMERA_STATUS_OK;
+}
+
+camstream_camera_status_t cancel_backend_creation() noexcept {
+    BackendRuntime& value = runtime();
+    std::lock_guard<std::mutex> lock(value.mutex);
+    if (value.state != LoadState::Loaded || value.client_count == 0U || value.module_handle == nullptr ||
+        value.backend == nullptr || value.create_reservation_count == 0U) {
+        return CAMSTREAM_CAMERA_STATUS_INVALID_STATE;
+    }
+
+    --value.create_reservation_count;
+    return CAMSTREAM_CAMERA_STATUS_OK;
 }
 
 void record_instance_destroyed() noexcept {
@@ -409,6 +461,7 @@ camstream_camera_status_t register_backend(const camstream_camera_backend_v1* ba
         value.last_error.clear();
         return CAMSTREAM_CAMERA_STATUS_OK;
     } catch (...) {
+        LOGE("Unexpected exception while registering a camera backend");
         return CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR;
     }
 }

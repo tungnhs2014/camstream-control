@@ -11,12 +11,13 @@ DerivePointerAlignment: false
 NamespaceIndentation: None
 BreakBeforeBraces: Attach
 AlignAfterOpenBracket: Align
-BinPackArguments: false
-BinPackParameters: false
-AllowAllArgumentsOnNextLine: true
-AllowAllParametersOfDeclarationOnNextLine: true
+BinPackArguments: true
+BinPackParameters: true
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortFunctionsOnASingleLine: Empty
 PenaltyReturnTypeOnItsOwnLine: 1000
+PenaltyBreakAssignment: 100
 SortIncludes: true
 IncludeBlocks: Preserve
 MaxEmptyLinesToKeep: 1

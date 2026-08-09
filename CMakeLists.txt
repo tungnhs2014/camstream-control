@@ -9,8 +9,11 @@ option(CAMSTREAM_BUILD_GST_TEST "Build the GStreamer diagnostic utility" ON)
 option(CAMSTREAM_BUILD_SERVICE "Build the foreground camera service" ON)
 option(CAMSTREAM_BUILD_CAMERA_HAL "Build the Camera HAL core library" OFF)
 option(CAMSTREAM_BUILD_CAMERA_BACKEND_SIMULATED "Build the simulated camera backend" OFF)
+option(CAMSTREAM_BUILD_CAMERA_BACKEND_V4L2 "Build the Linux V4L2 camera backend" OFF)
 option(CAMSTREAM_BUILD_CAMERA_TEST "Build the Camera HAL diagnostic utility" OFF)
 option(CAMSTREAM_BUILD_CAMERA_HAL_TESTS "Build host-only Camera HAL regression tests" OFF)
+
+add_subdirectory(libs/camstream-logging)
 
 if(CAMSTREAM_BUILD_CAPTURE)
     add_subdirectory(apps/camstream-capture)
@@ -28,13 +31,17 @@ if(CAMSTREAM_BUILD_SERVICE)
     add_subdirectory(apps/camstream-service)
 endif()
 
-if(CAMSTREAM_BUILD_CAMERA_HAL OR CAMSTREAM_BUILD_CAMERA_BACKEND_SIMULATED OR CAMSTREAM_BUILD_CAMERA_TEST OR
-   CAMSTREAM_BUILD_CAMERA_HAL_TESTS)
+if(CAMSTREAM_BUILD_CAMERA_HAL OR CAMSTREAM_BUILD_CAMERA_BACKEND_SIMULATED OR CAMSTREAM_BUILD_CAMERA_BACKEND_V4L2 OR
+   CAMSTREAM_BUILD_CAMERA_TEST OR CAMSTREAM_BUILD_CAMERA_HAL_TESTS)
     add_subdirectory(libs/camstream-camera-hal)
 endif()
 
 if(CAMSTREAM_BUILD_CAMERA_BACKEND_SIMULATED OR CAMSTREAM_BUILD_CAMERA_HAL_TESTS)
     add_subdirectory(backends/camera/simulated)
+endif()
+
+if(CAMSTREAM_BUILD_CAMERA_BACKEND_V4L2)
+    add_subdirectory(backends/camera/v4l2)
 endif()
 
 if(CAMSTREAM_BUILD_CAMERA_TEST)

@@ -12,8 +12,9 @@ camstream_camera_status_t unload_backend() noexcept;
 camstream_camera_status_t copy_runtime_error(char* buffer, std::uint32_t buffer_size) noexcept;
 void set_runtime_error(const char* error) noexcept;
 camstream_camera_status_t register_backend(const camstream_camera_backend_v1* backend) noexcept;
-const camstream_camera_backend_v1* active_backend() noexcept;
-void record_instance_created() noexcept;
+camstream_camera_status_t reserve_backend_for_create(const camstream_camera_backend_v1** backend) noexcept;
+camstream_camera_status_t commit_backend_creation() noexcept;
+camstream_camera_status_t cancel_backend_creation() noexcept;
 void record_instance_destroyed() noexcept;
 
 } // namespace camstream::camera::detail

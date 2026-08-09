@@ -8,11 +8,11 @@ official Linux interface.
 
 Stage 8.4 implements the constructor-registration architecture:
 
-- `libcamstream-camera-hal.so` owns the public C HAL, backend runtime, and C++17 `CameraSession` wrapper;
+- `libcamstream-camera-hal.so` owns the public C HAL, camera lifecycle/frame ownership, and backend runtime;
 - a backend module registers one static ABI-v1 operation table from an ELF constructor;
 - the HAL validates and retains that registration after `dlopen()` returns;
 - upper layers call only the public HAL operations;
-- multiple sessions share one loaded backend while retaining separate backend instances and frame ownership.
+- multiple cameras share one loaded backend while retaining separate backend instances and frame ownership.
 
 The Stage 8.3 Camera PPI report remains historical evidence for the lifecycle and ownership behavior migrated here.
 Phases 1 and 2 are implemented and owner-validated within their host scope. The closure audit leaves Stage 8.4
@@ -23,8 +23,8 @@ Phases 1 and 2 are implemented and owner-validated within their host scope. The 
 ```mermaid
 flowchart TB
     Upper["Application / future camstreamsrc"]
-    Session["CameraSession"]
     Hal["Camera HAL public C API"]
+    Core["HAL lifecycle and frame ownership"]
     Runtime["process-wide backend runtime"]
     Ops["validated backend operations table"]
     Module["backend shared object"]
@@ -32,7 +32,7 @@ flowchart TB
     Simulated["simulated backend instance"]
     Future["future V4L2 or libcamera backend"]
 
-    Upper --> Session --> Hal --> Ops --> Simulated
+    Upper --> Hal --> Core --> Ops --> Simulated
     Hal --> Runtime --> Module
     Module --> Constructor -->|register static ops| Runtime
     Ops -. future implementation .-> Future
@@ -46,7 +46,7 @@ camstream_camera_start(camera)
 -> simulated_start(backend instance)
 ```
 
-There is no alternate descriptor-return path and no backend callback access from `CameraSession`.
+There is no alternate descriptor-return path and no backend callback access from upper-layer code.
 
 ## Interface separation
 
@@ -56,8 +56,8 @@ There is no alternate descriptor-return path and no backend callback access from
 load/unload functions, and ordinary camera lifecycle/frame operations. It exposes no STL, exceptions, platform device
 types, loader handles, or backend instances.
 
-Each ordinary operation validates its HAL arguments, then dispatches directly through the validated operation table.
-Backend-specific lifecycle policy remains in the backend; the HAL does not duplicate it.
+Each ordinary operation validates its HAL arguments and core lifecycle state, then dispatches through the validated
+operation table. The backend still validates its own state and platform-specific contracts independently.
 
 ### Backend SPI
 
@@ -92,10 +92,11 @@ handle and restores `UNLOADED` only after that close succeeds. A close failure p
 callable operation pointer, enters `FAULTED`, and rejects later loads and camera operations rather than exposing stale
 callbacks or falsely advertising a reusable runtime.
 
-## CameraSession ownership and lifecycle
+## HAL ownership and lifecycle
 
-`CameraSession` owns one HAL runtime reference, one opaque HAL camera, its lifecycle state, a distinct session identity,
-and its outstanding frame tokens. It is non-copyable and non-movable.
+The caller owns one backend-runtime reference and each opaque HAL camera it creates. The HAL camera owns its backend
+instance, lifecycle state, and outstanding-frame map. The public contract uses status values; no C++ wrapper or
+exception translation is required in the normal camera flow.
 
 The normal lifecycle remains:
 
@@ -105,23 +106,24 @@ load backend -> create HAL camera -> open -> configure -> start
              -> stop -> close -> destroy HAL camera -> release backend reference
 ```
 
-Backend statuses become `CameraError` exceptions above the C boundary. Destruction is non-throwing and performs
-best-effort token release, stop, close, HAL camera destruction, and backend-runtime release in that order.
+Camera destruction is non-throwing and performs best-effort token release, stop, close, and backend-instance
+destruction. The caller releases the module reference only after all HAL cameras are destroyed.
 
 ## Frame ownership invariants
 
-The backend owns image storage. `CameraFrame` contains borrowed plane views valid only until successful release. The
-wrapper preserves:
+The backend owns image storage. The public frame contains borrowed plane views valid only until successful release.
+The HAL core preserves:
 
-- an independent identity for every session;
-- cross-session and duplicate release rejection before backend dispatch;
-- tracking of every outstanding token;
-- acquire rollback if wrapper validation or token tracking fails;
+- an independent identity for every HAL camera through process-unique public frame tokens;
+- cross-camera, duplicate, and stale release rejection before backend dispatch;
+- a private mapping from HAL ownership tokens to backend-local tokens;
+- tracking of every outstanding frame;
+- acquire rollback if metadata validation or token tracking fails;
 - a pending cleanup token when rollback itself fails;
-- frame invalidation only after successful release;
+- removal of ownership state only after successful release;
 - backend instance destruction before the final module unload.
 
-Numerically equal tokens from separate backend instances do not imply shared ownership.
+Numerically equal private tokens from separate backend instances remain isolated below the HAL.
 
 ## Simulated and future backends
 

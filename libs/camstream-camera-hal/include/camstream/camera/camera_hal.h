@@ -83,9 +83,12 @@ typedef struct camstream_camera_plane_v1 {
 /**
  * @brief Temporary multi-plane frame access transferred by acquire_frame().
  *
- * frame_token is opaque and backend-neutral. An implementation may have
- * multiple outstanding tokens. All plane storage remains implementation-owned
- * and valid until the matching HAL release operation succeeds.
+ * frame_token is an opaque, process-unique HAL ownership token. It identifies
+ * both the acquired frame and its originating camera, so another camera cannot
+ * release it even when two backends use the same private token value. An
+ * implementation may have multiple outstanding frames. All plane storage
+ * remains implementation-owned and valid until the matching HAL release
+ * operation succeeds.
  */
 typedef struct camstream_camera_frame_v1 {
     uint32_t abi_version;
@@ -101,7 +104,12 @@ typedef struct camstream_camera_frame_v1 {
     uint32_t reserved[4];
 } camstream_camera_frame_v1;
 
-/** @brief Opaque Camera HAL instance owned by the caller after create(). */
+/**
+ * @brief Opaque Camera HAL instance owned by the caller after create().
+ *
+ * One instance owns its backend instance, lifecycle state, and every acquired
+ * frame token. Calls on one instance must be serialized by the caller.
+ */
 typedef struct camstream_camera camstream_camera;
 
 /**
@@ -128,30 +136,35 @@ camstream_camera_status_t camstream_camera_hal_get_last_error(char* buffer, uint
 /** @brief Creates one opaque HAL camera through the active backend. */
 camstream_camera_status_t camstream_camera_create(camstream_camera** camera);
 
-/** @brief Destroys one HAL camera and its backend instance. */
+/**
+ * @brief Destroys one HAL camera and its backend instance.
+ *
+ * Destruction performs best-effort frame release, stop, and close before the
+ * backend instance is destroyed. The module reference remains caller-owned
+ * and must be released separately after all cameras are destroyed.
+ */
 void camstream_camera_destroy(camstream_camera* camera);
 
 /** @brief Copies the validated backend identity for one HAL camera. */
-camstream_camera_status_t
-camstream_camera_get_backend_name(camstream_camera* camera, char* buffer, uint32_t buffer_size);
+camstream_camera_status_t camstream_camera_get_backend_name(camstream_camera* camera, char* buffer,
+                                                            uint32_t buffer_size);
 
 /** @brief Returns the validated backend ABI version for one HAL camera. */
-camstream_camera_status_t
-camstream_camera_get_backend_abi_version(camstream_camera* camera, uint32_t* abi_version);
+camstream_camera_status_t camstream_camera_get_backend_abi_version(camstream_camera* camera, uint32_t* abi_version);
 
-/** @brief Opens one backend-specific source. */
+/** @brief Opens one backend-specific source from Created state. */
 camstream_camera_status_t camstream_camera_open(camstream_camera* camera, const char* source_identifier);
 
 /** @brief Closes a stopped or non-started source. */
 camstream_camera_status_t camstream_camera_close(camstream_camera* camera);
 
 /** @brief Reports bounded capabilities for an open source. */
-camstream_camera_status_t
-camstream_camera_get_capabilities(camstream_camera* camera, camstream_camera_capabilities_v1* capabilities);
+camstream_camera_status_t camstream_camera_get_capabilities(camstream_camera* camera,
+                                                            camstream_camera_capabilities_v1* capabilities);
 
 /** @brief Returns one supported configuration by zero-based index. */
-camstream_camera_status_t camstream_camera_get_stream_configuration(
-    camstream_camera* camera, uint32_t index, camstream_camera_stream_config_v1* configuration);
+camstream_camera_status_t camstream_camera_get_stream_configuration(camstream_camera* camera, uint32_t index,
+                                                                    camstream_camera_stream_config_v1* configuration);
 
 /** @brief Applies a request and reports the backend's active configuration. */
 camstream_camera_status_t camstream_camera_configure(camstream_camera* camera,
@@ -164,18 +177,26 @@ camstream_camera_status_t camstream_camera_start(camstream_camera* camera);
 /** @brief Waits for frame availability and may return the normal TIMEOUT status. */
 camstream_camera_status_t camstream_camera_wait_frame(camstream_camera* camera, uint32_t timeout_ms);
 
-/** @brief Acquires temporary access to one backend-owned frame. */
+/**
+ * @brief Acquires temporary access to one backend-owned frame.
+ *
+ * The HAL validates backend metadata, assigns a HAL ownership token, and
+ * rolls the backend acquisition back if the frame cannot be safely tracked.
+ */
 camstream_camera_status_t camstream_camera_acquire_frame(camstream_camera* camera, camstream_camera_frame_v1* frame);
 
-/** @brief Returns an outstanding frame token and invalidates its plane views. */
+/**
+ * @brief Returns an outstanding frame token and invalidates its plane views.
+ *
+ * Unknown, stale, already-released, and different-camera tokens are rejected.
+ */
 camstream_camera_status_t camstream_camera_release_frame(camstream_camera* camera, uint64_t frame_token);
 
 /** @brief Stops frame delivery after every outstanding frame is released. */
 camstream_camera_status_t camstream_camera_stop(camstream_camera* camera);
 
 /** @brief Copies the backend instance's last diagnostic into bounded storage. */
-camstream_camera_status_t
-camstream_camera_get_last_error(camstream_camera* camera, char* buffer, uint32_t buffer_size);
+camstream_camera_status_t camstream_camera_get_last_error(camstream_camera* camera, char* buffer, uint32_t buffer_size);
 
 #ifdef __cplusplus
 }

@@ -28,6 +28,7 @@ target_compile_options(camstream-service
 target_link_libraries(camstream-service
     PRIVATE
         camstream::gstreamer
+        camstream::logging
         Threads::Threads
 )
 

@@ -29,4 +29,6 @@ target_compile_options(camstream-gstreamer
 target_link_libraries(camstream-gstreamer
     PUBLIC
         PkgConfig::GSTREAMER
+    PRIVATE
+        camstream::logging
 )

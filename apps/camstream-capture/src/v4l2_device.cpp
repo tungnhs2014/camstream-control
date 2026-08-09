@@ -1,5 +1,7 @@
 #include "camstream/v4l2_device.hpp"
 
+#include <camstream/logging.hpp>
+
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -70,7 +72,7 @@ bool wait_for_frame_ready(int fd) {
 
         const auto remaining = deadline - std::chrono::steady_clock::now();
         if (remaining <= std::chrono::steady_clock::duration::zero()) {
-            std::cerr << "Error: frame wait timed out after " << kFramePollTimeoutMilliseconds << " ms\n";
+            LOGE("Frame wait timed out after " << kFramePollTimeoutMilliseconds << " ms");
             return false;
         }
 
@@ -80,26 +82,26 @@ bool wait_for_frame_ready(int fd) {
 
     if (poll_result == -1) {
         const int error = errno;
-        std::cerr << "Error: poll failed while waiting for a frame: " << std::strerror(error) << '\n';
+        LOGE("poll failed while waiting for a frame: " << std::strerror(error));
         return false;
     }
 
     if (poll_result == 0) {
-        std::cerr << "Error: frame wait timed out after " << kFramePollTimeoutMilliseconds << " ms\n";
+        LOGE("Frame wait timed out after " << kFramePollTimeoutMilliseconds << " ms");
         return false;
     }
 
     const short fatal_events = static_cast<short>(POLLERR | POLLHUP | POLLNVAL);
     if ((descriptor.revents & fatal_events) != 0) {
-        std::cerr << "Error: poll reported fatal device events: 0x" << std::hex
-                  << static_cast<unsigned int>(static_cast<unsigned short>(descriptor.revents)) << std::dec << '\n';
+        LOGE("poll reported fatal device events: 0x"
+             << std::hex << static_cast<unsigned int>(static_cast<unsigned short>(descriptor.revents)) << std::dec);
         return false;
     }
 
     const short ready_events = static_cast<short>(POLLIN | POLLPRI);
     if ((descriptor.revents & ready_events) == 0) {
-        std::cerr << "Error: poll returned without a requested frame event: 0x" << std::hex
-                  << static_cast<unsigned int>(static_cast<unsigned short>(descriptor.revents)) << std::dec << '\n';
+        LOGE("poll returned without a requested frame event: 0x"
+             << std::hex << static_cast<unsigned int>(static_cast<unsigned short>(descriptor.revents)) << std::dec);
         return false;
     }
 
@@ -119,30 +121,28 @@ bool wait_for_frame_ready(int fd) {
  *
  * @return true only when open, exact write, flush, and close all succeed.
  */
-bool write_binary_payload(const std::string& output_path,
-                          const std::byte* payload,
-                          std::size_t payload_size,
+bool write_binary_payload(const std::string& output_path, const std::byte* payload, std::size_t payload_size,
                           const char* payload_name) {
     if (output_path.empty() || payload == nullptr || payload_size == 0) {
-        std::cerr << "Error: invalid " << payload_name << " file-output request\n";
+        LOGE("Invalid " << payload_name << " file-output request");
         return false;
     }
 
     if (payload_size > static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max())) {
-        std::cerr << "Error: " << payload_name << " payload is too large for file output\n";
+        LOGE(payload_name << " payload is too large for file output");
         return false;
     }
 
     std::ofstream output(output_path, std::ios::binary | std::ios::out | std::ios::trunc);
     if (!output.is_open()) {
-        std::cerr << "Error: cannot open " << payload_name << " output '" << output_path << "'\n";
+        LOGE("Cannot open " << payload_name << " output '" << output_path << "'");
         return false;
     }
 
     bool io_succeeded = true;
     output.write(reinterpret_cast<const char*>(payload), static_cast<std::streamsize>(payload_size));
     if (!output) {
-        std::cerr << "Error: incomplete write to " << payload_name << " output '" << output_path << "'\n";
+        LOGE("Incomplete write to " << payload_name << " output '" << output_path << "'");
         io_succeeded = false;
         output.clear();
     }
@@ -150,7 +150,7 @@ bool write_binary_payload(const std::string& output_path,
     if (io_succeeded) {
         output.flush();
         if (!output) {
-            std::cerr << "Error: cannot flush " << payload_name << " output '" << output_path << "'\n";
+            LOGE("Cannot flush " << payload_name << " output '" << output_path << "'");
             io_succeeded = false;
             output.clear();
         }
@@ -159,7 +159,7 @@ bool write_binary_payload(const std::string& output_path,
     output.close();
     const bool close_succeeded = !output.fail();
     if (!close_succeeded) {
-        std::cerr << "Error: cannot close " << payload_name << " output '" << output_path << "' cleanly\n";
+        LOGE("Cannot close " << payload_name << " output '" << output_path << "' cleanly");
     }
 
     return io_succeeded && close_succeeded;
@@ -182,14 +182,13 @@ bool save_mjpeg_frame(const std::string& output_path, const MappedBuffer& mappin
     const std::byte* const payload = mapping.data();
 
     if (payload == nullptr || payload_size == 0 || payload_size > mapping.length()) {
-        std::cerr << "Error: MJPEG payload exceeds its mapped buffer\n";
+        LOGE("MJPEG payload exceeds its mapped buffer");
         return false;
     }
 
     if (payload_size < 4 || payload[0] != std::byte{0xff} || payload[1] != std::byte{0xd8} ||
         payload[payload_size - 2] != std::byte{0xff} || payload[payload_size - 1] != std::byte{0xd9}) {
-        std::cerr << "Error: selected MJPEG frame does not contain valid JPEG "
-                     "SOI/EOI markers\n";
+        LOGE("Selected MJPEG frame does not contain valid JPEG SOI/EOI markers");
         return false;
     }
 
@@ -220,12 +219,8 @@ bool save_mjpeg_frame(const std::string& output_path, const MappedBuffer& mappin
  * @return true only when active metadata and payload bounds are valid and the
  * exact bytes_used payload is written, flushed, and closed successfully.
  */
-bool save_yuyv_frame(const std::string& output_path,
-                     const MappedBuffer& mapping,
-                     std::uint32_t bytes_used,
-                     std::uint32_t width,
-                     std::uint32_t height,
-                     std::uint32_t bytes_per_line,
+bool save_yuyv_frame(const std::string& output_path, const MappedBuffer& mapping, std::uint32_t bytes_used,
+                     std::uint32_t width, std::uint32_t height, std::uint32_t bytes_per_line,
                      std::uint32_t size_image) {
     const std::size_t payload_size = static_cast<std::size_t>(bytes_used);
     const std::byte* const payload = mapping.data();
@@ -238,20 +233,18 @@ bool save_yuyv_frame(const std::string& output_path,
               << "  Frame bytes used: " << bytes_used << '\n';
 
     if (width == 0 || height == 0 || bytes_per_line == 0 || size_image == 0) {
-        std::cerr << "Error: active YUYV format contains zero-sized metadata\n";
+        LOGE("Active YUYV format contains zero-sized metadata");
         return false;
     }
 
     if (payload == nullptr || payload_size == 0 || payload_size > mapping.length()) {
-        std::cerr << "Error: YUYV payload is empty or exceeds its mapped "
-                     "buffer\n";
+        LOGE("YUYV payload is empty or exceeds its mapped buffer");
         return false;
     }
 
     if (bytes_used != size_image) {
-        std::cerr << "Warning: YUYV frame bytesused " << bytes_used << " differs from active sizeimage " << size_image
-                  << "; writing exactly bytesused without padding or "
-                     "truncation\n";
+        LOGW("YUYV frame bytesused " << bytes_used << " differs from active sizeimage " << size_image
+                                     << "; writing exactly bytesused without padding or truncation");
     }
 
     if (!write_binary_payload(output_path, payload, payload_size, "YUYV")) {
@@ -322,9 +315,9 @@ bool enumerate_frame_intervals(int fd, const FrameMode& mode, const char* indent
                 break;
             }
 
-            std::cerr << "Error: VIDIOC_ENUM_FRAMEINTERVALS failed for " << fourcc_string(mode.pixel_format) << ' '
-                      << mode.width << 'x' << mode.height << " at index " << index << ": " << std::strerror(error)
-                      << '\n';
+            LOGE("VIDIOC_ENUM_FRAMEINTERVALS failed for " << fourcc_string(mode.pixel_format) << ' ' << mode.width
+                                                          << 'x' << mode.height << " at index " << index << ": "
+                                                          << std::strerror(error));
             return false;
         }
 
@@ -345,8 +338,8 @@ bool enumerate_frame_intervals(int fd, const FrameMode& mode, const char* indent
                       << interval_string(interval.stepwise.max) << '\n';
             break;
         default:
-            std::cerr << "Error: unknown frame-interval type " << interval.type << " for "
-                      << fourcc_string(mode.pixel_format) << ' ' << mode.width << 'x' << mode.height << '\n';
+            LOGE("Unknown frame-interval type " << interval.type << " for " << fourcc_string(mode.pixel_format) << ' '
+                                                << mode.width << 'x' << mode.height);
             return false;
         }
     }
@@ -372,8 +365,8 @@ bool enumerate_frame_sizes(int fd, std::uint32_t pixel_format) {
                 break;
             }
 
-            std::cerr << "Error: VIDIOC_ENUM_FRAMESIZES failed for " << fourcc_string(pixel_format) << " at index "
-                      << index << ": " << std::strerror(error) << '\n';
+            LOGE("VIDIOC_ENUM_FRAMESIZES failed for " << fourcc_string(pixel_format) << " at index " << index << ": "
+                                                      << std::strerror(error));
             return false;
         }
 
@@ -381,11 +374,7 @@ bool enumerate_frame_sizes(int fd, std::uint32_t pixel_format) {
 
         if (size.type == V4L2_FRMSIZE_TYPE_DISCRETE) {
             std::cout << "  Size[" << index << "]: " << size.discrete.width << 'x' << size.discrete.height << '\n';
-            const FrameMode mode{
-                pixel_format,
-                size.discrete.width,
-                size.discrete.height,
-            };
+            const FrameMode mode{pixel_format, size.discrete.width, size.discrete.height};
             if (!enumerate_frame_intervals(fd, mode, "    ")) {
                 return false;
             }
@@ -393,8 +382,7 @@ bool enumerate_frame_sizes(int fd, std::uint32_t pixel_format) {
         }
 
         if (size.type != V4L2_FRMSIZE_TYPE_STEPWISE && size.type != V4L2_FRMSIZE_TYPE_CONTINUOUS) {
-            std::cerr << "Error: unknown frame-size type " << size.type << " for " << fourcc_string(pixel_format)
-                      << '\n';
+            LOGE("Unknown frame-size type " << size.type << " for " << fourcc_string(pixel_format));
             return false;
         }
 
@@ -409,22 +397,14 @@ bool enumerate_frame_sizes(int fd, std::uint32_t pixel_format) {
         std::cout << '\n';
 
         std::cout << "    Intervals at minimum size " << range.min_width << 'x' << range.min_height << ":\n";
-        const FrameMode minimum_mode{
-            pixel_format,
-            range.min_width,
-            range.min_height,
-        };
+        const FrameMode minimum_mode{pixel_format, range.min_width, range.min_height};
         if (!enumerate_frame_intervals(fd, minimum_mode, "      ")) {
             return false;
         }
 
         if (range.min_width != range.max_width || range.min_height != range.max_height) {
             std::cout << "    Intervals at maximum size " << range.max_width << 'x' << range.max_height << ":\n";
-            const FrameMode maximum_mode{
-                pixel_format,
-                range.max_width,
-                range.max_height,
-            };
+            const FrameMode maximum_mode{pixel_format, range.max_width, range.max_height};
             if (!enumerate_frame_intervals(fd, maximum_mode, "      ")) {
                 return false;
             }
@@ -496,8 +476,8 @@ void print_stream_parameters(const char* label, const v4l2_streamparm& parameter
               << "  Time per frame denominator: " << time_per_frame.denominator << '\n';
 
     if (time_per_frame.numerator != 0 && time_per_frame.denominator != 0) {
-        const double fps =
-            static_cast<double>(time_per_frame.denominator) / static_cast<double>(time_per_frame.numerator);
+        const double fps = static_cast<double>(time_per_frame.denominator) /
+                           static_cast<double>(time_per_frame.numerator);
         std::cout << "  Calculated FPS: " << std::setprecision(6) << fps << '\n';
     } else {
         std::cout << "  Calculated FPS: unavailable\n";
@@ -509,7 +489,8 @@ void print_stream_parameters(const char* label, const v4l2_streamparm& parameter
 V4l2Device::V4l2Device(std::string requested_device_path) : device_path(std::move(requested_device_path)) {
     fd = open(device_path.c_str(), O_RDWR | O_NONBLOCK);
     if (fd == -1) {
-        std::cerr << "Error: cannot open '" << device_path << "': " << std::strerror(errno) << '\n';
+        const int error = errno;
+        LOGE("Cannot open '" << device_path << "': " << std::strerror(error));
     }
 }
 
@@ -526,14 +507,14 @@ bool V4l2Device::query_and_validate_capabilities() {
 
     if (retry_ioctl(fd, VIDIOC_QUERYCAP, &capability) == -1) {
         const int error = errno;
-        std::cerr << "Error: VIDIOC_QUERYCAP failed for '" << device_path << "': " << std::strerror(error) << '\n';
+        LOGE("VIDIOC_QUERYCAP failed for '" << device_path << "': " << std::strerror(error));
         return false;
     }
 
     const std::uint32_t capabilities = capability.capabilities;
     const std::uint32_t device_capabilities = capability.device_caps;
-    const std::uint32_t effective_capabilities =
-        (capabilities & V4L2_CAP_DEVICE_CAPS) != 0 ? device_capabilities : capabilities;
+    const std::uint32_t effective_capabilities = (capabilities & V4L2_CAP_DEVICE_CAPS) != 0 ? device_capabilities
+                                                                                            : capabilities;
 
     std::cout << "Device: " << device_path << '\n'
               << "Driver: " << capability_string(capability.driver, sizeof(capability.driver)) << '\n'
@@ -551,16 +532,14 @@ bool V4l2Device::query_and_validate_capabilities() {
 
     if (!supports_capture) {
         if ((effective_capabilities & V4L2_CAP_META_CAPTURE) != 0) {
-            std::cerr << "Error: '" << device_path
-                      << "' is a metadata-only node; a video-capture node "
-                         "is required\n";
+            LOGE("'" << device_path << "' is a metadata-only node; a video-capture node is required");
         } else {
-            std::cerr << "Error: '" << device_path << "' does not support V4L2 video capture\n";
+            LOGE("'" << device_path << "' does not support V4L2 video capture");
         }
     }
 
     if (!supports_streaming) {
-        std::cerr << "Error: '" << device_path << "' does not support V4L2 streaming I/O\n";
+        LOGE("'" << device_path << "' does not support V4L2 streaming I/O");
     }
 
     return supports_capture && supports_streaming;
@@ -580,7 +559,7 @@ bool V4l2Device::enumerate_capture_formats() {
                 break;
             }
 
-            std::cerr << "Error: VIDIOC_ENUM_FMT failed at index " << index << ": " << std::strerror(error) << '\n';
+            LOGE("VIDIOC_ENUM_FMT failed at index " << index << ": " << std::strerror(error));
             return false;
         }
 
@@ -610,14 +589,13 @@ bool V4l2Device::negotiate_frame_rate(std::uint32_t requested_fps) {
     initial_parameters.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (retry_ioctl(fd, VIDIOC_G_PARM, &initial_parameters) == -1) {
         const int error = errno;
-        std::cerr << "Error: initial VIDIOC_G_PARM failed: " << std::strerror(error) << '\n';
+        LOGE("Initial VIDIOC_G_PARM failed: " << std::strerror(error));
         return false;
     }
     print_stream_parameters("Initial G_PARM", initial_parameters);
 
     if ((initial_parameters.parm.capture.capability & V4L2_CAP_TIMEPERFRAME) == 0) {
-        std::cerr << "Error: device does not support V4L2_CAP_TIMEPERFRAME; "
-                     "cannot negotiate an explicitly requested frame rate\n";
+        LOGE("Device does not support V4L2_CAP_TIMEPERFRAME; cannot negotiate an explicitly requested frame rate");
         return false;
     }
 
@@ -626,7 +604,7 @@ bool V4l2Device::negotiate_frame_rate(std::uint32_t requested_fps) {
     set_parameters.parm.capture.timeperframe.denominator = requested_fps;
     if (retry_ioctl(fd, VIDIOC_S_PARM, &set_parameters) == -1) {
         const int error = errno;
-        std::cerr << "Error: VIDIOC_S_PARM failed: " << std::strerror(error) << '\n';
+        LOGE("VIDIOC_S_PARM failed: " << std::strerror(error));
         return false;
     }
     print_stream_parameters("S_PARM result", set_parameters);
@@ -635,7 +613,7 @@ bool V4l2Device::negotiate_frame_rate(std::uint32_t requested_fps) {
     final_parameters.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (retry_ioctl(fd, VIDIOC_G_PARM, &final_parameters) == -1) {
         const int error = errno;
-        std::cerr << "Error: final VIDIOC_G_PARM failed: " << std::strerror(error) << '\n';
+        LOGE("Final VIDIOC_G_PARM failed: " << std::strerror(error));
         return false;
     }
     print_stream_parameters("Final G_PARM", final_parameters);
@@ -653,7 +631,7 @@ bool V4l2Device::negotiate_capture_format(const CaptureConfig& config) {
     v4l2_format tried_format = requested_v4l2_format(config);
     if (retry_ioctl(fd, VIDIOC_TRY_FMT, &tried_format) == -1) {
         const int error = errno;
-        std::cerr << "Error: VIDIOC_TRY_FMT failed: " << std::strerror(error) << '\n';
+        LOGE("VIDIOC_TRY_FMT failed: " << std::strerror(error));
         return false;
     }
     print_format_result("TRY_FMT result", tried_format);
@@ -661,7 +639,7 @@ bool V4l2Device::negotiate_capture_format(const CaptureConfig& config) {
     v4l2_format set_format = requested_v4l2_format(config);
     if (retry_ioctl(fd, VIDIOC_S_FMT, &set_format) == -1) {
         const int error = errno;
-        std::cerr << "Error: VIDIOC_S_FMT failed: " << std::strerror(error) << '\n';
+        LOGE("VIDIOC_S_FMT failed: " << std::strerror(error));
         return false;
     }
     print_format_result("S_FMT result", set_format);
@@ -670,7 +648,7 @@ bool V4l2Device::negotiate_capture_format(const CaptureConfig& config) {
     active_format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (retry_ioctl(fd, VIDIOC_G_FMT, &active_format) == -1) {
         const int error = errno;
-        std::cerr << "Error: VIDIOC_G_FMT failed: " << std::strerror(error) << '\n';
+        LOGE("VIDIOC_G_FMT failed: " << std::strerror(error));
         return false;
     }
     print_format_result("G_FMT active format", active_format);
@@ -690,7 +668,7 @@ bool V4l2Device::negotiate_capture_format(const CaptureConfig& config) {
 
 bool V4l2Device::prepare_mmap_buffers() {
     if (driver_buffers_allocated || !mappings.empty() || streaming) {
-        std::cerr << "Error: MMAP buffers are already active\n";
+        LOGE("MMAP buffers are already active");
         return false;
     }
 
@@ -702,7 +680,7 @@ bool V4l2Device::prepare_mmap_buffers() {
     std::cout << "\nRequested buffers: " << kRequestedBufferCount << '\n';
     if (retry_ioctl(fd, VIDIOC_REQBUFS, &request) == -1) {
         const int error = errno;
-        std::cerr << "Error: VIDIOC_REQBUFS failed: " << std::strerror(error) << '\n';
+        LOGE("VIDIOC_REQBUFS failed: " << std::strerror(error));
         return false;
     }
 
@@ -711,31 +689,30 @@ bool V4l2Device::prepare_mmap_buffers() {
     std::cout << "Granted buffers: " << request.count << "\n\n";
 
     if (request.type != V4L2_BUF_TYPE_VIDEO_CAPTURE || request.memory != V4L2_MEMORY_MMAP) {
-        std::cerr << "Error: driver returned incompatible buffer type or "
-                     "memory model\n";
+        LOGE("Driver returned incompatible buffer type or memory model");
         return false;
     }
 
     if (request.count == 0) {
-        std::cerr << "Error: driver granted zero MMAP buffers\n";
+        LOGE("Driver granted zero MMAP buffers");
         return false;
     }
 
     if (request.count > kMaximumAcceptedBufferCount) {
-        std::cerr << "Error: driver granted " << request.count << " buffers, exceeding the project sanity limit of "
-                  << kMaximumAcceptedBufferCount << '\n';
+        LOGE("Driver granted " << request.count << " buffers, exceeding the project sanity limit of "
+                               << kMaximumAcceptedBufferCount);
         return false;
     }
 
     if (static_cast<std::uintmax_t>(request.count) > static_cast<std::uintmax_t>(mappings.max_size())) {
-        std::cerr << "Error: granted buffer count exceeds container capacity\n";
+        LOGE("Granted buffer count exceeds container capacity");
         return false;
     }
 
     try {
         mappings.reserve(request.count);
     } catch (const std::exception& error) {
-        std::cerr << "Error: cannot reserve mapped-buffer storage: " << error.what() << '\n';
+        LOGE("Cannot reserve mapped-buffer storage: " << error.what());
         return false;
     }
 
@@ -747,31 +724,31 @@ bool V4l2Device::prepare_mmap_buffers() {
 
         if (retry_ioctl(fd, VIDIOC_QUERYBUF, &buffer) == -1) {
             const int error = errno;
-            std::cerr << "Error: VIDIOC_QUERYBUF failed for buffer " << index << ": " << std::strerror(error) << '\n';
+            LOGE("VIDIOC_QUERYBUF failed for buffer " << index << ": " << std::strerror(error));
             return false;
         }
 
         if (buffer.index != index || buffer.type != V4L2_BUF_TYPE_VIDEO_CAPTURE || buffer.memory != V4L2_MEMORY_MMAP) {
-            std::cerr << "Error: buffer " << index << " returned inconsistent QUERYBUF metadata\n";
+            LOGE("Buffer " << index << " returned inconsistent QUERYBUF metadata");
             return false;
         }
 
         if (buffer.length == 0) {
-            std::cerr << "Error: buffer " << index << " has zero length\n";
+            LOGE("Buffer " << index << " has zero length");
             return false;
         }
 
         if (static_cast<std::uintmax_t>(buffer.m.offset) >
             static_cast<std::uintmax_t>(std::numeric_limits<off_t>::max())) {
-            std::cerr << "Error: buffer " << index << " offset cannot be represented by mmap()\n";
+            LOGE("Buffer " << index << " offset cannot be represented by mmap()");
             return false;
         }
 
-        void* const address =
-            mmap(nullptr, buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, static_cast<off_t>(buffer.m.offset));
+        void* const address = mmap(nullptr, buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
+                                   static_cast<off_t>(buffer.m.offset));
         if (address == MAP_FAILED) {
             const int error = errno;
-            std::cerr << "Error: mmap failed for buffer " << index << ": " << std::strerror(error) << '\n';
+            LOGE("mmap failed for buffer " << index << ": " << std::strerror(error));
             return false;
         }
 
@@ -788,7 +765,7 @@ bool V4l2Device::prepare_mmap_buffers() {
 
 bool V4l2Device::queue_all_buffers() {
     if (!driver_buffers_allocated || mappings.size() != static_cast<std::size_t>(granted_buffer_count)) {
-        std::cerr << "Error: cannot queue an incomplete MMAP buffer set\n";
+        LOGE("Cannot queue an incomplete MMAP buffer set");
         return false;
     }
 
@@ -797,7 +774,7 @@ bool V4l2Device::queue_all_buffers() {
     for (std::size_t position = 0; position < mappings.size(); ++position) {
         const std::uint32_t index = mappings[position].index();
         if (static_cast<std::size_t>(index) != position || index >= granted_buffer_count) {
-            std::cerr << "Error: invalid mapped-buffer index " << index << " at position " << position << '\n';
+            LOGE("Invalid mapped-buffer index " << index << " at position " << position);
             return false;
         }
 
@@ -808,13 +785,13 @@ bool V4l2Device::queue_all_buffers() {
 
         if (retry_ioctl(fd, VIDIOC_QBUF, &buffer) == -1) {
             const int error = errno;
-            std::cerr << "Error: VIDIOC_QBUF failed for buffer " << index << ": errno " << error << " ("
-                      << std::strerror(error) << ")\n";
+            LOGE("VIDIOC_QBUF failed for buffer " << index << ": errno " << error << " (" << std::strerror(error)
+                                                  << ')');
             return false;
         }
 
         if (buffer.index != index || buffer.type != V4L2_BUF_TYPE_VIDEO_CAPTURE || buffer.memory != V4L2_MEMORY_MMAP) {
-            std::cerr << "Error: buffer " << index << " returned inconsistent QBUF metadata\n";
+            LOGE("Buffer " << index << " returned inconsistent QBUF metadata");
             return false;
         }
 
@@ -829,20 +806,19 @@ bool V4l2Device::queue_all_buffers() {
 
 bool V4l2Device::start_streaming() {
     if (streaming) {
-        std::cerr << "Error: streaming is already active\n";
+        LOGE("Streaming is already active");
         return false;
     }
 
     if (!buffers_queued) {
-        std::cerr << "Error: cannot start streaming before all buffers are "
-                     "queued\n";
+        LOGE("Cannot start streaming before all buffers are queued");
         return false;
     }
 
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (retry_ioctl(fd, VIDIOC_STREAMON, &type) == -1) {
         const int error = errno;
-        std::cerr << "Error: VIDIOC_STREAMON failed: " << std::strerror(error) << '\n';
+        LOGE("VIDIOC_STREAMON failed: " << std::strerror(error));
         return false;
     }
 
@@ -853,18 +829,17 @@ bool V4l2Device::start_streaming() {
 
 bool V4l2Device::capture_frames(std::uint32_t frame_count, std::uint32_t skip_frames, const std::string& output_path) {
     if (!streaming) {
-        std::cerr << "Error: cannot capture frames while streaming is inactive\n";
+        LOGE("Cannot capture frames while streaming is inactive");
         return false;
     }
 
     if (frame_count == 0) {
-        std::cerr << "Error: frame count must be positive\n";
+        LOGE("Frame count must be positive");
         return false;
     }
 
     if (!output_path.empty() && active_pixel_format != V4L2_PIX_FMT_MJPEG && active_pixel_format != V4L2_PIX_FMT_YUYV) {
-        std::cerr << "Error: file output requires the active format to be "
-                     "MJPG or YUYV\n";
+        LOGE("File output requires the active format to be MJPG or YUYV");
         return false;
     }
 
@@ -889,14 +864,13 @@ bool V4l2Device::capture_frames(std::uint32_t frame_count, std::uint32_t skip_fr
             if (error == EAGAIN) {
                 ++consecutive_dequeue_retries;
                 if (consecutive_dequeue_retries > kMaximumConsecutiveDequeueRetries) {
-                    std::cerr << "Error: VIDIOC_DQBUF repeatedly returned "
-                                 "EAGAIN after poll readiness\n";
+                    LOGE("VIDIOC_DQBUF repeatedly returned EAGAIN after poll readiness");
                     return false;
                 }
                 continue;
             }
 
-            std::cerr << "Error: VIDIOC_DQBUF failed: errno " << error << " (" << std::strerror(error) << ")\n";
+            LOGE("VIDIOC_DQBUF failed: errno " << error << " (" << std::strerror(error) << ')');
             return false;
         }
 
@@ -905,40 +879,38 @@ bool V4l2Device::capture_frames(std::uint32_t frame_count, std::uint32_t skip_fr
         buffers_queued = false;
 
         if (dequeued_buffer.type != V4L2_BUF_TYPE_VIDEO_CAPTURE || dequeued_buffer.memory != V4L2_MEMORY_MMAP) {
-            std::cerr << "Error: dequeued buffer returned incompatible type or "
-                         "memory model\n";
+            LOGE("Dequeued buffer returned incompatible type or memory model");
             return false;
         }
 
         if (static_cast<std::size_t>(dequeued_buffer.index) >= mappings.size()) {
-            std::cerr << "Error: dequeued buffer index " << dequeued_buffer.index << " exceeds mapped buffer count "
-                      << mappings.size() << '\n';
+            LOGE("Dequeued buffer index " << dequeued_buffer.index << " exceeds mapped buffer count "
+                                          << mappings.size());
             return false;
         }
 
         const MappedBuffer& mapping = mappings[dequeued_buffer.index];
         if (mapping.index() != dequeued_buffer.index) {
-            std::cerr << "Error: dequeued buffer index " << dequeued_buffer.index
-                      << " does not match mapped-buffer ownership metadata\n";
+            LOGE("Dequeued buffer index " << dequeued_buffer.index
+                                          << " does not match mapped-buffer ownership metadata");
             return false;
         }
 
         const std::size_t mapped_length = mapping.length();
         if (mapped_length == 0 || static_cast<std::size_t>(dequeued_buffer.bytesused) > mapped_length) {
-            std::cerr << "Error: dequeued buffer " << dequeued_buffer.index << " reports " << dequeued_buffer.bytesused
-                      << " bytes used for a mapping of " << mapped_length << " bytes\n";
+            LOGE("Dequeued buffer " << dequeued_buffer.index << " reports " << dequeued_buffer.bytesused
+                                    << " bytes used for a mapping of " << mapped_length << " bytes");
             return false;
         }
 
         if (dequeued_buffer.length == 0 || static_cast<std::size_t>(dequeued_buffer.length) > mapped_length ||
             dequeued_buffer.bytesused > dequeued_buffer.length) {
-            std::cerr << "Error: dequeued buffer " << dequeued_buffer.index
-                      << " returned inconsistent length metadata\n";
+            LOGE("Dequeued buffer " << dequeued_buffer.index << " returned inconsistent length metadata");
             return false;
         }
 
         if (dequeued_buffer.timestamp.tv_usec < 0 || dequeued_buffer.timestamp.tv_usec >= 1000000) {
-            std::cerr << "Error: dequeued buffer " << dequeued_buffer.index << " returned an invalid timestamp\n";
+            LOGE("Dequeued buffer " << dequeued_buffer.index << " returned an invalid timestamp");
             return false;
         }
 
@@ -949,15 +921,13 @@ bool V4l2Device::capture_frames(std::uint32_t frame_count, std::uint32_t skip_fr
         if (has_buffer_error) {
             ++error_frames;
             ++consecutive_error_frames;
-            std::cerr << "Warning: dequeued frame[" << dequeued_frames << "] has V4L2_BUF_FLAG_ERROR:\n"
-                      << "  Buffer index: " << buffer_index << '\n'
-                      << "  Sequence: " << dequeued_buffer.sequence << '\n'
-                      << "  Bytes used: " << dequeued_buffer.bytesused << '\n'
-                      << "  Flags: 0x" << std::hex << std::setw(8) << std::setfill('0') << dequeued_buffer.flags
-                      << std::dec << std::setfill(' ') << '\n';
+            LOGW("Dequeued frame[" << dequeued_frames << "] has V4L2_BUF_FLAG_ERROR: buffer=" << buffer_index
+                                   << ", sequence=" << dequeued_buffer.sequence
+                                   << ", bytesused=" << dequeued_buffer.bytesused << ", flags=0x" << std::hex
+                                   << dequeued_buffer.flags << std::dec);
         } else {
-            const std::uint32_t frame_number =
-                is_skipped_valid_frame ? skipped_valid_frames + 1 : captured_valid_frames + 1;
+            const std::uint32_t frame_number = is_skipped_valid_frame ? skipped_valid_frames + 1
+                                                                      : captured_valid_frames + 1;
             std::cout << (is_skipped_valid_frame ? "Skipped valid frame[" : "Captured valid frame[") << frame_number
                       << "]:\n"
                       << "  Buffer index: " << buffer_index << '\n'
@@ -970,19 +940,14 @@ bool V4l2Device::capture_frames(std::uint32_t frame_count, std::uint32_t skip_fr
         }
 
         bool frame_output_succeeded = true;
-        const bool is_final_valid_frame =
-            !has_buffer_error && !is_skipped_valid_frame && (captured_valid_frames + 1 == frame_count);
+        const bool is_final_valid_frame = !has_buffer_error && !is_skipped_valid_frame &&
+                                          (captured_valid_frames + 1 == frame_count);
         if (is_final_valid_frame && !output_path.empty()) {
             if (active_pixel_format == V4L2_PIX_FMT_MJPEG) {
                 frame_output_succeeded = save_mjpeg_frame(output_path, mapping, dequeued_buffer.bytesused);
             } else {
-                frame_output_succeeded = save_yuyv_frame(output_path,
-                                                         mapping,
-                                                         dequeued_buffer.bytesused,
-                                                         active_width,
-                                                         active_height,
-                                                         active_bytes_per_line,
-                                                         active_size_image);
+                frame_output_succeeded = save_yuyv_frame(output_path, mapping, dequeued_buffer.bytesused, active_width,
+                                                         active_height, active_bytes_per_line, active_size_image);
             }
         }
 
@@ -993,15 +958,15 @@ bool V4l2Device::capture_frames(std::uint32_t frame_count, std::uint32_t skip_fr
 
         if (retry_ioctl(fd, VIDIOC_QBUF, &requeue_buffer) == -1) {
             const int error = errno;
-            std::cerr << "Error: VIDIOC_QBUF failed while requeueing buffer " << buffer_index << ": errno " << error
-                      << " (" << std::strerror(error) << ")\n";
+            LOGE("VIDIOC_QBUF failed while requeueing buffer " << buffer_index << ": errno " << error << " ("
+                                                               << std::strerror(error) << ')');
             return false;
         }
 
         buffers_queued = true;
         if (requeue_buffer.index != buffer_index || requeue_buffer.type != V4L2_BUF_TYPE_VIDEO_CAPTURE ||
             requeue_buffer.memory != V4L2_MEMORY_MMAP) {
-            std::cerr << "Error: buffer " << buffer_index << " returned inconsistent re-QBUF metadata\n";
+            LOGE("Buffer " << buffer_index << " returned inconsistent re-QBUF metadata");
             return false;
         }
 
@@ -1011,13 +976,11 @@ bool V4l2Device::capture_frames(std::uint32_t frame_count, std::uint32_t skip_fr
 
         if (has_buffer_error) {
             if (consecutive_error_frames >= kMaximumConsecutiveErrorFrames) {
-                std::cerr << "Error: reached the project limit of " << kMaximumConsecutiveErrorFrames
-                          << " consecutive V4L2 buffer errors before "
-                             "capturing the requested valid frames\n"
-                          << "Dequeued frames: " << dequeued_frames << '\n'
-                          << "Skipped valid frames: " << skipped_valid_frames << '\n'
-                          << "Captured valid frames: " << captured_valid_frames << '\n'
-                          << "Error frames: " << error_frames << '\n';
+                LOGE("Reached the project limit of "
+                     << kMaximumConsecutiveErrorFrames
+                     << " consecutive V4L2 buffer errors before capturing the requested valid frames; dequeued="
+                     << dequeued_frames << ", skipped=" << skipped_valid_frames
+                     << ", captured=" << captured_valid_frames << ", errors=" << error_frames);
                 return false;
             }
             continue;
@@ -1040,14 +1003,14 @@ bool V4l2Device::capture_frames(std::uint32_t frame_count, std::uint32_t skip_fr
 
 bool V4l2Device::stop_streaming() {
     if (!streaming) {
-        std::cerr << "Error: cannot stop an inactive stream\n";
+        LOGE("Cannot stop an inactive stream");
         return false;
     }
 
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (retry_ioctl(fd, VIDIOC_STREAMOFF, &type) == -1) {
         const int error = errno;
-        std::cerr << "Error: VIDIOC_STREAMOFF failed: " << std::strerror(error) << '\n';
+        LOGE("VIDIOC_STREAMOFF failed: " << std::strerror(error));
         return false;
     }
 
@@ -1065,12 +1028,12 @@ bool V4l2Device::release_driver_buffers() {
 
     if (retry_ioctl(fd, VIDIOC_REQBUFS, &release_request) == -1) {
         const int error = errno;
-        std::cerr << "Error: VIDIOC_REQBUFS buffer release failed: " << std::strerror(error) << '\n';
+        LOGE("VIDIOC_REQBUFS buffer release failed: " << std::strerror(error));
         return false;
     }
 
     if (release_request.count != 0) {
-        std::cerr << "Error: driver reported " << release_request.count << " buffers after release request\n";
+        LOGE("Driver reported " << release_request.count << " buffers after release request");
         return false;
     }
 
@@ -1091,8 +1054,7 @@ bool V4l2Device::release_buffers() {
     bool all_mappings_unmapped = true;
 
     if (streaming) {
-        std::cerr << "Error: stream is still active after STREAMOFF failure; "
-                     "closing device before unmapping buffers\n";
+        LOGE("Stream is still active after STREAMOFF failure; closing device before unmapping buffers");
         if (!close_descriptor()) {
             cleanup_succeeded = false;
         }
@@ -1108,8 +1070,7 @@ bool V4l2Device::release_buffers() {
         const std::size_t length = mapping.length();
         if (!mapping.unmap()) {
             const int error = errno;
-            std::cerr << "Error: munmap failed for buffer " << index << " (length " << length
-                      << "): " << std::strerror(error) << '\n';
+            LOGE("munmap failed for buffer " << index << " (length " << length << "): " << std::strerror(error));
             cleanup_succeeded = false;
             all_mappings_unmapped = false;
         }
@@ -1118,8 +1079,7 @@ bool V4l2Device::release_buffers() {
 
     if (can_release_driver_buffers && driver_buffers_allocated) {
         if (!all_mappings_unmapped) {
-            std::cerr << "Error: skipping explicit driver-buffer release "
-                         "because a mapping could not be unmapped\n";
+            LOGE("Skipping explicit driver-buffer release because a mapping could not be unmapped");
             if (!close_descriptor()) {
                 cleanup_succeeded = false;
             }
@@ -1146,7 +1106,7 @@ bool V4l2Device::close_descriptor() {
     const int device_fd = std::exchange(fd, -1);
     if (::close(device_fd) == -1) {
         const int error = errno;
-        std::cerr << "Error: cannot close '" << device_path << "': " << std::strerror(error) << '\n';
+        LOGE("Cannot close '" << device_path << "': " << std::strerror(error));
         return false;
     }
 

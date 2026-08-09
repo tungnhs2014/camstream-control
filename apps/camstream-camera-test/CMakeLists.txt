@@ -20,6 +20,7 @@ target_compile_options(camstream-camera-test
 target_link_libraries(camstream-camera-test
     PRIVATE
         camstream::camera-hal
+        camstream::logging
 )
 
 install(TARGETS camstream-camera-test

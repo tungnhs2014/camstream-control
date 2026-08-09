@@ -1,10 +1,11 @@
 #include "camstream/camera_service.hpp"
 
+#include <camstream/logging.hpp>
+
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
-#include <iostream>
 #include <limits>
 #include <poll.h>
 #include <pthread.h>
@@ -70,27 +71,26 @@ CameraService::CameraService(GstreamerPipelineConfig pipeline_config)
 
 CameraService::~CameraService() noexcept {
     if (!shutdown()) {
-        std::cerr << "Error: camera service destructor cleanup failed\n";
+        LOGE("Camera service destructor cleanup failed");
     }
 }
 
 bool CameraService::initialize() {
     if (lifecycle_state != CameraServiceState::Created) {
-        std::cerr << "Error: camera service initialize() requires Created state;"
-                  << " current state is " << state_name() << '\n';
+        LOGE("Camera service initialize() requires Created state; current state is " << state_name());
         return false;
     }
 
     sigset_t termination_signals{};
     if (sigemptyset(&termination_signals) != 0 || sigaddset(&termination_signals, SIGINT) != 0 ||
         sigaddset(&termination_signals, SIGTERM) != 0) {
-        std::cerr << "Error: failed to construct termination signal set: " << std::strerror(errno) << '\n';
+        LOGE("Failed to construct termination signal set: " << std::strerror(errno));
         return false;
     }
 
     const int mask_result = pthread_sigmask(SIG_BLOCK, &termination_signals, &previous_signal_mask);
     if (mask_result != 0) {
-        std::cerr << "Error: failed to block termination signals: " << std::strerror(mask_result) << '\n';
+        LOGE("Failed to block termination signals: " << std::strerror(mask_result));
         return false;
     }
     owns_signal_mask = true;
@@ -100,17 +100,17 @@ bool CameraService::initialize() {
     signal_fd = signalfd(-1, &termination_signals, SFD_CLOEXEC | SFD_NONBLOCK);
     if (signal_fd < 0) {
         const int saved_errno = errno;
-        std::cerr << "Error: signalfd creation failed: " << std::strerror(saved_errno) << '\n';
+        LOGE("signalfd creation failed: " << std::strerror(saved_errno));
         const bool restored = restore_signal_mask();
         if (!restored) {
-            std::cerr << "Error: signal mask cleanup failed after signalfd error\n";
+            LOGE("Signal mask cleanup failed after signalfd error");
             lifecycle_state = CameraServiceState::StopRequested;
         }
         return false;
     }
 
     lifecycle_state = CameraServiceState::Initialized;
-    std::cout << "Camera service initialized" << std::endl;
+    LOGI("Camera service initialized");
 
     if (!pipeline.build()) {
         lifecycle_state = CameraServiceState::Failed;
@@ -123,19 +123,17 @@ bool CameraService::initialize() {
     }
 
     lifecycle_state = CameraServiceState::PipelineReady;
-    std::cout << "Camera service pipeline ready" << std::endl;
+    LOGI("Camera service pipeline ready");
     return true;
 }
 
 bool CameraService::run() {
     if (!called_from_owner_thread()) {
-        std::cerr << "Error: camera service run() must execute on the"
-                  << " initialization thread\n";
+        LOGE("Camera service run() must execute on the initialization thread");
         return false;
     }
     if (lifecycle_state != CameraServiceState::PipelineReady) {
-        std::cerr << "Error: camera service run() requires PipelineReady state;"
-                  << " current state is " << state_name() << '\n';
+        LOGE("Camera service run() requires PipelineReady state; current state is " << state_name());
         return false;
     }
 
@@ -146,20 +144,16 @@ bool CameraService::run() {
     }
 
     lifecycle_state = CameraServiceState::Running;
-    std::cout << "Camera service running" << std::endl;
+    LOGI("Camera service running");
 
     const auto finite_deadline = std::chrono::steady_clock::now() + finite_run_timeout;
 
     while (lifecycle_state == CameraServiceState::Running) {
-        pollfd events[] = {
-            {signal_fd, POLLIN, 0},
-            {bus_poll_fd, POLLIN, 0},
-        };
+        pollfd events[] = {{signal_fd, POLLIN, 0}, {bus_poll_fd, POLLIN, 0}};
 
         const int poll_timeout = finite_pipeline ? remaining_poll_timeout(finite_deadline) : -1;
         if (finite_pipeline && poll_timeout == 0) {
-            std::cerr << "Error: finite pipeline exceeded its nominal duration "
-                         "plus the 120-second stall allowance\n";
+            LOGE("Finite pipeline exceeded its nominal duration plus the 120-second stall allowance");
             lifecycle_state = CameraServiceState::Failed;
             return false;
         }
@@ -169,24 +163,23 @@ bool CameraService::run() {
             if (errno == EINTR) {
                 continue;
             }
-            std::cerr << "Error: service poll failed: " << std::strerror(errno) << '\n';
+            LOGE("Service poll failed: " << std::strerror(errno));
             lifecycle_state = CameraServiceState::Failed;
             return false;
         }
         if (poll_result == 0) {
-            std::cerr << "Error: finite pipeline exceeded its nominal duration "
-                         "plus the 120-second stall allowance\n";
+            LOGE("Finite pipeline exceeded its nominal duration plus the 120-second stall allowance");
             lifecycle_state = CameraServiceState::Failed;
             return false;
         }
 
         if ((events[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-            std::cerr << "Error: signalfd reported poll events 0x" << std::hex << events[0].revents << std::dec << '\n';
+            LOGE("signalfd reported poll events 0x" << std::hex << events[0].revents << std::dec);
             lifecycle_state = CameraServiceState::Failed;
             return false;
         }
         if ((events[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-            std::cerr << "Error: GstBus reported poll events 0x" << std::hex << events[1].revents << std::dec << '\n';
+            LOGE("GstBus reported poll events 0x" << std::hex << events[1].revents << std::dec);
             lifecycle_state = CameraServiceState::Failed;
             return false;
         }
@@ -205,8 +198,7 @@ bool CameraService::run() {
 
 bool CameraService::request_stop() noexcept {
     if (!called_from_owner_thread()) {
-        std::cerr << "Error: camera service request_stop() must execute on the"
-                  << " initialization thread\n";
+        LOGE("Camera service request_stop() must execute on the initialization thread");
         return false;
     }
     if (lifecycle_state == CameraServiceState::Running) {
@@ -217,15 +209,13 @@ bool CameraService::request_stop() noexcept {
         return true;
     }
 
-    std::cerr << "Error: camera service request_stop() requires Running state;"
-              << " current state is " << state_name() << '\n';
+    LOGE("Camera service request_stop() requires Running state; current state is " << state_name());
     return false;
 }
 
 bool CameraService::shutdown() noexcept {
     if (owns_signal_mask && !called_from_owner_thread()) {
-        std::cerr << "Error: camera service shutdown() must execute on the"
-                  << " initialization thread\n";
+        LOGE("Camera service shutdown() must execute on the initialization thread");
         return false;
     }
 
@@ -233,7 +223,7 @@ bool CameraService::shutdown() noexcept {
         if (lifecycle_state != CameraServiceState::Failed) {
             lifecycle_state = CameraServiceState::StopRequested;
         }
-        std::cout << "Camera service stopping" << std::endl;
+        LOGI("Camera service stopping");
     }
 
     bool success = pipeline.stop();
@@ -255,7 +245,7 @@ bool CameraService::shutdown() noexcept {
 
     if (lifecycle_state != CameraServiceState::Stopped) {
         lifecycle_state = CameraServiceState::Stopped;
-        std::cout << "Camera service stopped" << std::endl;
+        LOGI("Camera service stopped");
     }
     return success;
 }
@@ -285,11 +275,11 @@ bool CameraService::read_signal_event(int& signal_number) noexcept {
         return true;
     }
     if (bytes_read < 0) {
-        std::cerr << "Error: signalfd read failed: " << std::strerror(errno) << '\n';
+        LOGE("signalfd read failed: " << std::strerror(errno));
         return false;
     }
     if (bytes_read != static_cast<ssize_t>(sizeof(signal_info))) {
-        std::cerr << "Error: signalfd returned " << bytes_read << " bytes; expected " << sizeof(signal_info) << '\n';
+        LOGE("signalfd returned " << bytes_read << " bytes; expected " << sizeof(signal_info));
         return false;
     }
 
@@ -307,11 +297,11 @@ bool CameraService::handle_signal_event() noexcept {
     }
 
     if (signal_number == SIGINT) {
-        std::cout << "SIGINT received" << std::endl;
+        LOGI("SIGINT received");
     } else if (signal_number == SIGTERM) {
-        std::cout << "SIGTERM received" << std::endl;
+        LOGI("SIGTERM received");
     } else {
-        std::cerr << "Error: unexpected signal " << signal_number << " received through signalfd\n";
+        LOGE("Unexpected signal " << signal_number << " received through signalfd");
         return false;
     }
 
@@ -328,7 +318,7 @@ bool CameraService::handle_bus_event() noexcept {
         return false;
     }
     if (!finite_pipeline) {
-        std::cerr << "Error: continuous pipeline reached unexpected EOS\n";
+        LOGE("Continuous pipeline reached unexpected EOS");
         lifecycle_state = CameraServiceState::Failed;
         return false;
     }
@@ -360,15 +350,15 @@ bool CameraService::ignore_termination_signals() noexcept {
     struct sigaction ignore_action {};
     ignore_action.sa_handler = SIG_IGN;
     if (sigemptyset(&ignore_action.sa_mask) != 0) {
-        std::cerr << "Error: failed to construct ignored-signal action: " << std::strerror(errno) << '\n';
+        LOGE("Failed to construct ignored-signal action: " << std::strerror(errno));
         return false;
     }
     if (sigaction(SIGINT, &ignore_action, nullptr) != 0) {
-        std::cerr << "Error: failed to ignore SIGINT during shutdown: " << std::strerror(errno) << '\n';
+        LOGE("Failed to ignore SIGINT during shutdown: " << std::strerror(errno));
         return false;
     }
     if (sigaction(SIGTERM, &ignore_action, nullptr) != 0) {
-        std::cerr << "Error: failed to ignore SIGTERM during shutdown: " << std::strerror(errno) << '\n';
+        LOGE("Failed to ignore SIGTERM during shutdown: " << std::strerror(errno));
         return false;
     }
     return true;
@@ -382,7 +372,7 @@ bool CameraService::close_signal_fd() noexcept {
     const int descriptor = signal_fd;
     signal_fd = -1;
     if (close(descriptor) != 0) {
-        std::cerr << "Error: failed to close signalfd: " << std::strerror(errno) << '\n';
+        LOGE("Failed to close signalfd: " << std::strerror(errno));
         return false;
     }
     return true;
@@ -395,7 +385,7 @@ bool CameraService::restore_signal_mask() noexcept {
 
     const int mask_result = pthread_sigmask(SIG_SETMASK, &previous_signal_mask, nullptr);
     if (mask_result != 0) {
-        std::cerr << "Error: failed to restore signal mask: " << std::strerror(mask_result) << '\n';
+        LOGE("Failed to restore signal mask: " << std::strerror(mask_result));
         return false;
     }
 

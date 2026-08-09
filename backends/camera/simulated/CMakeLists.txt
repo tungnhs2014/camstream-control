@@ -20,6 +20,7 @@ target_compile_options(camstream-camera-backend-simulated
 target_link_libraries(camstream-camera-backend-simulated
     PRIVATE
         camstream::camera-hal
+        camstream::logging
 )
 
 install(TARGETS camstream-camera-backend-simulated

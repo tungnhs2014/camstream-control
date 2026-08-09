@@ -1,6 +1,8 @@
 #include "camstream/capture_config.hpp"
 #include "camstream/v4l2_device.hpp"
 
+#include <camstream/logging.hpp>
+
 #include <charconv>
 #include <cstdint>
 #include <iostream>
@@ -15,26 +17,26 @@ constexpr std::uint32_t kDefaultHeight = 480;
 constexpr std::uint32_t kDefaultSkipFrameCount = 0;
 constexpr std::uint32_t kDefaultFrameCount = 10;
 
-void print_usage(const char* program) {
-    std::cout << "Usage: " << program << " [--device <path>] [--format <MJPG|YUYV>]\n"
-              << "       [--width <pixels>] [--height <pixels>] [--fps <rate>]\n"
-              << "       [--skip <frames>] [--count <frames>] [--output <path>]\n"
-              << "       [--help]\n"
-              << "\n"
-              << "Query and validate a V4L2 video-capture device.\n"
-              << "\n"
-              << "Options:\n"
-              << "  --device <path>  V4L2 device node (default: " << kDefaultDevice << ")\n"
-              << "  --format <name>  Negotiate MJPG or YUYV capture format\n"
-              << "  --width <pixels> Requested width with --format (default: " << kDefaultWidth << ")\n"
-              << "  --height <pixels> Requested height with --format (default: " << kDefaultHeight << ")\n"
-              << "  --fps <rate>      Requested positive integer frame rate\n"
-              << "  --skip <frames>   Valid frames to skip with --format "
-              << "(default: " << kDefaultSkipFrameCount << ")\n"
-              << "  --count <frames>  Frames to validate with --format "
-              << "(default: " << kDefaultFrameCount << ")\n"
-              << "  --output <path>   Save the final valid MJPG or YUYV frame\n"
-              << "  --help           Show this help text\n";
+void print_usage(std::ostream& output, const char* program) {
+    output << "Usage: " << program << " [--device <path>] [--format <MJPG|YUYV>]\n"
+           << "       [--width <pixels>] [--height <pixels>] [--fps <rate>]\n"
+           << "       [--skip <frames>] [--count <frames>] [--output <path>]\n"
+           << "       [--help]\n"
+           << "\n"
+           << "Query and validate a V4L2 video-capture device.\n"
+           << "\n"
+           << "Options:\n"
+           << "  --device <path>  V4L2 device node (default: " << kDefaultDevice << ")\n"
+           << "  --format <name>  Negotiate MJPG or YUYV capture format\n"
+           << "  --width <pixels> Requested width with --format (default: " << kDefaultWidth << ")\n"
+           << "  --height <pixels> Requested height with --format (default: " << kDefaultHeight << ")\n"
+           << "  --fps <rate>      Requested positive integer frame rate\n"
+           << "  --skip <frames>   Valid frames to skip with --format "
+           << "(default: " << kDefaultSkipFrameCount << ")\n"
+           << "  --count <frames>  Frames to validate with --format "
+           << "(default: " << kDefaultFrameCount << ")\n"
+           << "  --output <path>   Save the final valid MJPG or YUYV frame\n"
+           << "  --help           Show this help text\n";
 }
 
 bool parse_positive_integer(const std::string& text, std::uint32_t& value) {
@@ -108,14 +110,7 @@ int run_capture(const camstream::CaptureConfig& config, bool has_format) {
 
 int main(int argc, char* argv[]) {
     camstream::CaptureConfig config{
-        kDefaultDevice,
-        0,
-        kDefaultWidth,
-        kDefaultHeight,
-        0,
-        kDefaultSkipFrameCount,
-        kDefaultFrameCount,
-        {},
+        kDefaultDevice, 0, kDefaultWidth, kDefaultHeight, 0, kDefaultSkipFrameCount, kDefaultFrameCount, {},
     };
     bool has_format = false;
     bool has_width = false;
@@ -124,34 +119,37 @@ int main(int argc, char* argv[]) {
     bool has_skip = false;
     bool has_count = false;
     bool has_output = false;
+    const auto invalid_arguments = [&argv] {
+        print_usage(std::cerr, argv[0]);
+        return 2;
+    };
 
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
 
         if (argument == "--help") {
-            print_usage(argv[0]);
+            print_usage(std::cout, argv[0]);
             return 0;
         }
 
         if (argument == "--device") {
             if (index + 1 >= argc) {
-                std::cerr << "Error: --device requires a path\n";
-                print_usage(argv[0]);
-                return 2;
+                LOGE("--device requires a path");
+                return invalid_arguments();
             }
 
             config.device = argv[++index];
             if (config.device.empty()) {
-                std::cerr << "Error: device path must not be empty\n";
-                return 2;
+                LOGE("device path must not be empty");
+                return invalid_arguments();
             }
             continue;
         }
 
         if (argument == "--format") {
             if (index + 1 >= argc) {
-                std::cerr << "Error: --format requires MJPG or YUYV\n";
-                return 2;
+                LOGE("--format requires MJPG or YUYV");
+                return invalid_arguments();
             }
 
             const std::string format = argv[++index];
@@ -160,8 +158,8 @@ int main(int argc, char* argv[]) {
             } else if (format == "YUYV") {
                 config.pixel_format = V4L2_PIX_FMT_YUYV;
             } else {
-                std::cerr << "Error: unsupported format '" << format << "'; expected MJPG or YUYV\n";
-                return 2;
+                LOGE("unsupported format '" << format << "'; expected MJPG or YUYV");
+                return invalid_arguments();
             }
             has_format = true;
             continue;
@@ -169,15 +167,15 @@ int main(int argc, char* argv[]) {
 
         if (argument == "--width" || argument == "--height") {
             if (index + 1 >= argc) {
-                std::cerr << "Error: " << argument << " requires a positive pixel count\n";
-                return 2;
+                LOGE(argument << " requires a positive pixel count");
+                return invalid_arguments();
             }
 
             const std::string value = argv[++index];
             std::uint32_t parsed_value = 0;
             if (!parse_positive_integer(value, parsed_value)) {
-                std::cerr << "Error: invalid " << argument << " value '" << value << "'; expected a positive integer\n";
-                return 2;
+                LOGE("invalid " << argument << " value '" << value << "'; expected a positive integer");
+                return invalid_arguments();
             }
 
             if (argument == "--width") {
@@ -192,15 +190,15 @@ int main(int argc, char* argv[]) {
 
         if (argument == "--fps") {
             if (index + 1 >= argc) {
-                std::cerr << "Error: --fps requires a positive integer\n";
-                return 2;
+                LOGE("--fps requires a positive integer");
+                return invalid_arguments();
             }
 
             const std::string value = argv[++index];
             std::uint32_t parsed_value = 0;
             if (!parse_positive_integer(value, parsed_value)) {
-                std::cerr << "Error: invalid --fps value '" << value << "'; expected a positive integer\n";
-                return 2;
+                LOGE("invalid --fps value '" << value << "'; expected a positive integer");
+                return invalid_arguments();
             }
 
             config.fps = parsed_value;
@@ -210,15 +208,15 @@ int main(int argc, char* argv[]) {
 
         if (argument == "--count") {
             if (index + 1 >= argc) {
-                std::cerr << "Error: --count requires a positive integer\n";
-                return 2;
+                LOGE("--count requires a positive integer");
+                return invalid_arguments();
             }
 
             const std::string value = argv[++index];
             std::uint32_t parsed_value = 0;
             if (!parse_positive_integer(value, parsed_value)) {
-                std::cerr << "Error: invalid --count value '" << value << "'; expected a positive integer\n";
-                return 2;
+                LOGE("invalid --count value '" << value << "'; expected a positive integer");
+                return invalid_arguments();
             }
 
             config.frame_count = parsed_value;
@@ -228,15 +226,15 @@ int main(int argc, char* argv[]) {
 
         if (argument == "--skip") {
             if (index + 1 >= argc) {
-                std::cerr << "Error: --skip requires a non-negative integer\n";
-                return 2;
+                LOGE("--skip requires a non-negative integer");
+                return invalid_arguments();
             }
 
             const std::string value = argv[++index];
             std::uint32_t parsed_value = 0;
             if (!parse_non_negative_integer(value, parsed_value)) {
-                std::cerr << "Error: invalid --skip value '" << value << "'; expected a non-negative integer\n";
-                return 2;
+                LOGE("invalid --skip value '" << value << "'; expected a non-negative integer");
+                return invalid_arguments();
             }
 
             config.skip_frames = parsed_value;
@@ -246,47 +244,46 @@ int main(int argc, char* argv[]) {
 
         if (argument == "--output") {
             if (index + 1 >= argc) {
-                std::cerr << "Error: --output requires a path\n";
-                return 2;
+                LOGE("--output requires a path");
+                return invalid_arguments();
             }
 
             config.output_path = argv[++index];
             if (config.output_path.empty()) {
-                std::cerr << "Error: output path must not be empty\n";
-                return 2;
+                LOGE("output path must not be empty");
+                return invalid_arguments();
             }
             has_output = true;
             continue;
         }
 
-        std::cerr << "Error: unknown option '" << argument << "'\n";
-        print_usage(argv[0]);
-        return 2;
+        LOGE("unknown option '" << argument << "'");
+        return invalid_arguments();
     }
 
     if (!has_format && has_fps) {
-        std::cerr << "Error: --fps requires --format\n";
-        return 2;
+        LOGE("--fps requires --format");
+        return invalid_arguments();
     }
 
     if (!has_format && (has_width || has_height)) {
-        std::cerr << "Error: --width and --height require --format\n";
-        return 2;
+        LOGE("--width and --height require --format");
+        return invalid_arguments();
     }
 
     if (!has_format && has_count) {
-        std::cerr << "Error: --count requires --format\n";
-        return 2;
+        LOGE("--count requires --format");
+        return invalid_arguments();
     }
 
     if (!has_format && has_skip) {
-        std::cerr << "Error: --skip requires --format\n";
-        return 2;
+        LOGE("--skip requires --format");
+        return invalid_arguments();
     }
 
     if (!has_format && has_output) {
-        std::cerr << "Error: --output requires --format\n";
-        return 2;
+        LOGE("--output requires --format");
+        return invalid_arguments();
     }
 
     return run_capture(config, has_format);

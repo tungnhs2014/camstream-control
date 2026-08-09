@@ -1,5 +1,7 @@
 #include "camstream/gstreamer_pipeline.hpp"
 
+#include <camstream/logging.hpp>
+
 #include <charconv>
 #include <cstdint>
 #include <exception>
@@ -19,32 +21,32 @@ struct ParsedArguments {
     bool show_help = false;
 };
 
-void print_usage(const char* program) {
-    std::cout << "Usage: " << program << " --device /dev/videoN"
-              << " --format yuy2|mjpeg --width N --height N --fps N --buffers N"
-              << " [--sync true|false]\n\n"
-              << "Run one finite native-GStreamer V4L2 diagnostic pipeline.\n\n"
-              << "Required options:\n"
-              << "  --device <path>       Caller-selected V4L2 capture node\n"
-              << "  --format yuy2|mjpeg   Raw YUY2 or MJPEG-decode pipeline\n"
-              << "  --width <pixels>      Positive capture width\n"
-              << "  --height <pixels>     Positive capture height\n"
-              << "  --fps <rate>          Positive integral frame rate\n"
-              << "  --buffers <count>     Positive finite source-buffer count\n\n"
-              << "Optional:\n"
-              << "  --sync true|false     fakesink clock sync (default: false)\n"
-              << "  --help                Show this help text\n";
+void print_usage(std::ostream& output, const char* program) {
+    output << "Usage: " << program << " --device /dev/videoN"
+           << " --format yuy2|mjpeg --width N --height N --fps N --buffers N"
+           << " [--sync true|false]\n\n"
+           << "Run one finite native-GStreamer V4L2 diagnostic pipeline.\n\n"
+           << "Required options:\n"
+           << "  --device <path>       Caller-selected V4L2 capture node\n"
+           << "  --format yuy2|mjpeg   Raw YUY2 or MJPEG-decode pipeline\n"
+           << "  --width <pixels>      Positive capture width\n"
+           << "  --height <pixels>     Positive capture height\n"
+           << "  --fps <rate>          Positive integral frame rate\n"
+           << "  --buffers <count>     Positive finite source-buffer count\n\n"
+           << "Optional:\n"
+           << "  --sync true|false     fakesink clock sync (default: false)\n"
+           << "  --help                Show this help text\n";
 }
 
 bool consume_value(int argc, char* argv[], int& index, const std::string& option, std::string& value) {
     if (index + 1 >= argc || std::string_view(argv[index + 1]).rfind("--", 0) == 0U) {
-        std::cerr << "Error: " << option << " requires a value\n";
+        LOGE(option << " requires a value");
         return false;
     }
 
     value = argv[++index];
     if (value.empty()) {
-        std::cerr << "Error: " << option << " value must not be empty\n";
+        LOGE(option << " value must not be empty");
         return false;
     }
     return true;
@@ -70,7 +72,7 @@ bool parse_positive_gint(const std::string& text, std::uint32_t& value) {
 
 bool mark_once(bool& seen, const std::string& option) {
     if (seen) {
-        std::cerr << "Error: duplicate option " << option << '\n';
+        LOGE("duplicate option " << option);
         return false;
     }
     seen = true;
@@ -112,7 +114,7 @@ bool parse_arguments(int argc, char* argv[], ParsedArguments& parsed) {
             } else if (value == "mjpeg") {
                 parsed.config.input_format = camstream::GstreamerInputFormat::Mjpeg;
             } else {
-                std::cerr << "Error: invalid --format value '" << value << "'; expected yuy2 or mjpeg\n";
+                LOGE("invalid --format value '" << value << "'; expected yuy2 or mjpeg");
                 return false;
             }
             continue;
@@ -139,8 +141,7 @@ bool parse_arguments(int argc, char* argv[], ParsedArguments& parsed) {
                 return false;
             }
             if (!parse_positive_gint(value, *destination)) {
-                std::cerr << "Error: invalid " << option << " value '" << value
-                          << "'; expected a positive non-overflowing integer\n";
+                LOGE("invalid " << option << " value '" << value << "'; expected a positive non-overflowing integer");
                 return false;
             }
             continue;
@@ -155,13 +156,13 @@ bool parse_arguments(int argc, char* argv[], ParsedArguments& parsed) {
             } else if (value == "false") {
                 parsed.config.sink_sync = false;
             } else {
-                std::cerr << "Error: invalid --sync value '" << value << "'; expected true or false\n";
+                LOGE("invalid --sync value '" << value << "'; expected true or false");
                 return false;
             }
             continue;
         }
 
-        std::cerr << "Error: unknown option '" << option << "'\n";
+        LOGE("unknown option '" << option << "'");
         return false;
     }
 
@@ -170,17 +171,13 @@ bool parse_arguments(int argc, char* argv[], ParsedArguments& parsed) {
         bool present;
     };
     const RequiredOption required_options[] = {
-        {"--device", has_device},
-        {"--format", has_format},
-        {"--width", has_width},
-        {"--height", has_height},
-        {"--fps", has_fps},
-        {"--buffers", has_buffers},
+        {"--device", has_device}, {"--format", has_format}, {"--width", has_width},
+        {"--height", has_height}, {"--fps", has_fps},       {"--buffers", has_buffers},
     };
 
     for (const RequiredOption& required : required_options) {
         if (!required.present) {
-            std::cerr << "Error: missing required option " << required.name << '\n';
+            LOGE("missing required option " << required.name);
             return false;
         }
     }
@@ -225,18 +222,18 @@ int main(int argc, char* argv[]) {
     try {
         ParsedArguments parsed;
         if (!parse_arguments(argc, argv, parsed)) {
-            print_usage(argv[0]);
+            print_usage(std::cerr, argv[0]);
             return kArgumentErrorExitCode;
         }
         if (parsed.show_help) {
-            print_usage(argv[0]);
+            print_usage(std::cout, argv[0]);
             return 0;
         }
         return run(parsed);
     } catch (const std::exception& exception) {
-        std::cerr << "Error: unexpected C++ failure: " << exception.what() << '\n';
+        LOGE("unexpected C++ failure: " << exception.what());
     } catch (...) {
-        std::cerr << "Error: unexpected non-standard C++ failure\n";
+        LOGE("unexpected non-standard C++ failure");
     }
 
     return kRuntimeErrorExitCode;

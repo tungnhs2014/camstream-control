@@ -1,9 +1,9 @@
 # Camera HAL Runtime Flows
 
-Stage 8.4 routes the finite diagnostic through `CameraSession`, the public Camera HAL, and the constructor-registered
-simulated backend. The lifecycle and frame-ownership protections are preserved from the completed Stage 8.3 host
-scope. Phases 1 and 2 are implemented and owner-validated within the Stage 8.4 host scope; closure is ready for owner
-final validation.
+Stage 8.4 routes the finite diagnostic directly through the public Camera HAL and the constructor-registered simulated
+backend. Lifecycle and frame-ownership protections live in the HAL core rather than a mandatory C++ wrapper. The
+Stage 8.4 architecture is complete within its host-validation scope. Stage 8.5 adds V4L2 backend Phase 1 discovery;
+Phase 2 streaming, Buildroot integration, and board validation remain pending.
 
 ## Backend load and registration
 
@@ -37,58 +37,78 @@ backend remains active.
 flowchart LR
     Last["last client releases backend"] --> Live{"live instances == 0?"}
     Live -->|no| Reject["reject unload; remain LOADED"]
-    Live -->|yes| Unloading["UNLOADING"]
+    Live -->|yes| Creates{"create reservations == 0?"}
+    Creates -->|no| Reject
+    Creates -->|yes| Unloading["UNLOADING"]
     Unloading --> Close["dlclose()"]
     Close -->|success| Unloaded["clear runtime state; UNLOADED"]
     Close -->|failure| Faulted["retain module ownership; clear callable ops; FAULTED"]
 ```
 
-The runtime never calls `dlclose()` while a HAL camera instance remains alive. A failed close does not advertise a
-reusable unloaded state: it preserves the module handle and diagnostic identity, removes access to backend callbacks,
-and rejects later loads and camera operations.
+The runtime never calls `dlclose()` while a HAL camera instance remains alive or a create reservation is active. A
+failed close does not advertise a reusable unloaded state: it preserves the module handle and diagnostic identity,
+removes access to backend callbacks, and rejects later loads and camera operations.
 
 ## Successful camera lifecycle
 
 ```mermaid
 sequenceDiagram
-    actor App as camstream-camera-test
-    participant Session as CameraSession
-    participant HAL as Camera HAL
-    participant Backend as simulated backend instance
+    participant App as "camstream-camera-test"
+    participant HAL as "Camera HAL"
+    participant Backend as "Simulated Backend"
 
-    App->>Session: load(explicit backend path)
-    Session->>HAL: load backend, create camera
+    App->>HAL: camstream_camera_hal_load_backend(path)
+
+    App->>HAL: camstream_camera_create()
     HAL->>Backend: ops.create()
-    Backend-->>HAL: opaque backend instance
-    App->>Session: open("simulated0")
-    Session->>HAL: camstream_camera_open()
+    Backend-->>HAL: Opaque backend instance
+
+    App->>HAL: camstream_camera_open(simulated0)
     HAL->>Backend: ops.open(instance)
-    App->>Session: query and configure
-    Session->>HAL: public capability/configuration operations
-    HAL->>Backend: matching ops(instance, ...)
-    App->>Session: start()
-    Session->>HAL: camstream_camera_start()
+
+    App->>HAL: camstream_camera_get_capabilities()
+    HAL->>Backend: ops.get_capabilities(instance)
+
+    App->>HAL: camstream_camera_get_stream_configuration()
+    HAL->>Backend: ops.get_stream_configuration(instance)
+
+    App->>HAL: camstream_camera_configure()
+    HAL->>Backend: ops.configure(instance)
+
+    App->>HAL: camstream_camera_start()
     HAL->>Backend: ops.start(instance)
-    loop finite requested frame count
-        App->>Session: wait/acquire
-        Session->>HAL: public wait/acquire operations
-        HAL->>Backend: ops.wait_frame / ops.acquire_frame
-        Backend-->>Session: token and borrowed planes
-        Session->>Session: validate frame and record token with session identity
-        App->>Session: release_frame(frame)
-        Session->>Session: validate owner identity and outstanding token
-        Session->>HAL: camstream_camera_release_frame(token)
-        HAL->>Backend: ops.release_frame(instance, token)
-        Session->>Session: remove token and invalidate view
+
+    loop Requested frame count
+        App->>HAL: camstream_camera_wait_frame()
+        HAL->>Backend: ops.wait_frame()
+
+        App->>HAL: camstream_camera_acquire_frame()
+        HAL->>Backend: ops.acquire_frame()
+        Backend-->>HAL: Backend token and borrowed planes
+        HAL->>HAL: Validate frame
+        HAL->>HAL: Map HAL token to backend token
+        HAL-->>App: HAL token and borrowed planes
+
+        App->>HAL: camstream_camera_release_frame(HAL token)
+        HAL->>HAL: Validate ownership and token
+        HAL->>Backend: ops.release_frame(instance, backend token)
+        Backend-->>HAL: Release status
+        HAL->>HAL: Remove mapping after successful release
     end
-    App->>Session: stop and close
-    Session->>HAL: public stop and close operations
-    HAL->>Backend: ops.stop and ops.close
-    App->>Session: destroy session
-    Session->>HAL: destroy camera
+
+    App->>HAL: Stop camera
+    HAL->>Backend: ops.stop(instance)
+
+    App->>HAL: Close camera
+    HAL->>Backend: ops.close(instance)
+
+    App->>HAL: Destroy camera
     HAL->>Backend: ops.destroy(instance)
-    Session->>HAL: release backend reference
-    HAL->>HAL: mark UNLOADING, dlclose, then clear state on success
+
+    App->>HAL: camstream_camera_hal_unload_backend()
+    HAL->>HAL: Mark UNLOADING
+    HAL->>HAL: dlclose()
+    HAL->>HAL: Clear runtime state on success
 ```
 
 ## Failure and cleanup behavior
@@ -97,16 +117,16 @@ sequenceDiagram
 - A module that does not register, registers more than once, or supplies an incompatible/incomplete descriptor leaves
   the runtime reusable in `UNLOADED` only when cleanup closes its handle successfully. A close failure enters terminal
   `FAULTED`, preserves module ownership for diagnostics, clears callable operations, and rejects later loads.
-- A backend operation failure changes wrapper state only after successful dispatch and includes bounded backend
-  diagnostics when available.
-- A request to unload the final runtime reference while a HAL camera is alive fails, preserving
-  destroy-before-`dlclose()` ordering.
+- A backend operation failure changes HAL state only after successful dispatch and remains available as a bounded
+  backend or HAL diagnostic where applicable.
+- A request to unload the final runtime reference while a HAL camera or create reservation is active fails, preserving
+  callback-and-destroy-before-`dlclose()` ordering.
 
-Release validates session state, frame validity, originating session identity, and outstanding-token membership before
-dispatch. A cross-session release therefore leaves both legitimate frames valid. Equal numeric tokens in two backend
-instances do not alter ownership.
+Release validates camera state and outstanding public-token membership before dispatch. A cross-camera release
+therefore leaves both legitimate frames valid. Equal private backend tokens in two backend instances do not alter
+ownership because the HAL exposes process-unique ownership tokens.
 
-If wrapper validation or token tracking fails after backend acquisition, `CameraSession` attempts immediate rollback.
-If rollback also fails, it records one pending cleanup token, blocks further wait/acquire work, and retries during stop
-or destruction. Destructor cleanup releases pending and outstanding tokens before stop, close, camera destruction, and
-runtime release.
+If frame validation or token tracking fails after backend acquisition, the HAL attempts immediate rollback. If rollback
+also fails, it records one pending backend token, blocks further wait/acquire work, and retries during stop or
+destruction. Camera destruction releases pending and outstanding tokens before stop, close, and backend-instance
+destruction; module release remains an explicit caller operation after camera destruction.

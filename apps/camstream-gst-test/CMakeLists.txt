@@ -20,6 +20,7 @@ target_compile_options(camstream-gst-test
 target_link_libraries(camstream-gst-test
     PRIVATE
         camstream::gstreamer
+        camstream::logging
 )
 
 install(TARGETS camstream-gst-test

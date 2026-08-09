@@ -26,18 +26,22 @@ Camera Service
   -> future IPC / network streaming
 ```
 
-Camera portability path under Stage 8.4:
+Camera portability path:
 
 ```text
 Application / future camstreamsrc
-  -> Camera HAL
+  -> Camera HAL public C API
+  -> Camera HAL core
   -> backend operations table
   -> product backend shared object
 ```
 
 Stage 8.4 Phase 2 implements explicit-path module loading with ELF-constructor
 registration. The shared HAL runtime validates one backend operation table,
-and upper layers dispatch only through the public Camera HAL API.
+and upper layers dispatch only through the public, status-based Camera HAL API.
+The active architecture has no `CameraSession` or `CameraError` layer. Stage 8.5
+adds the V4L2 product backend Phase 1 discovery path; configuration and streaming
+remain pending Phase 2.
 
 Diagnostic path:
 
@@ -98,10 +102,12 @@ Completed engineering checkpoints and validated functionality are:
   ownership of the reusable pipeline and accepted BBB functional validation
 - Stage 8.3 — Camera PPI Core: **COMPLETE** within its documented host-validation
   scope, including the corrective cross-session ownership regression
-- Stage 8.4 — Camera HAL Architecture Refactor: **READY FOR OWNER FINAL
-  VALIDATION**; Phases 1 and 2 are implemented and owner-validated, and the
-  closure audit preserves constructor registration, process-wide runtime
-  ownership, public HAL dispatch, and existing session behavior
+- Stage 8.4 — Camera HAL Architecture Refactor: **COMPLETE** within its
+  documented host-validation scope, with constructor registration,
+  process-wide runtime ownership, and direct status-based HAL dispatch
+- Stage 8.5 — V4L2 Camera HAL Backend: **IN PROGRESS**; Phase 1 device opening,
+  capability checks, and discrete format/size/interval discovery are
+  implemented, while Phase 2 configuration and streaming remain pending
 
 Stage 6B application functionality, documentation, Buildroot integration,
 clean image generation, and packaged BBB/C270 validation are **PASS**. YUYV
@@ -136,9 +142,9 @@ changes, and performs deterministic signal-driven shutdown. Host, Buildroot,
 and accepted BBB functional validation passed. Stage 8.2 is **COMPLETE**.
 
 Stage 8.3 introduces the stable Camera PPI C ABI, explicit backend loading,
-the C++17 `CameraSession` ownership wrapper, a simulated backend, and a finite
-diagnostic application. Owner-provided host build and lifecycle evidence,
-failure paths, sanitizers, Valgrind, and 100 repeated executions passed.
+the then-current C++17 `CameraSession` ownership wrapper, a simulated backend,
+and a finite diagnostic application. Owner-provided host build and lifecycle
+evidence, failure paths, sanitizers, Valgrind, and 100 repeated executions passed.
 Post-validation review identified and corrected a cross-session frame-ownership
 gap. The ownership regression, corrective ASan/UBSan validation, and corrective
 Valgrind validation passed without changing the Camera PPI C ABI or backend
@@ -150,12 +156,21 @@ Stage 8.4 refactors the completed PPI foundation into the Camera HAL
 product-porting architecture. The implementation keeps the platform-independent
 HAL contract separate from the backend operation table, replaces the
 descriptor-return loader with ELF-constructor registration, and routes
-`CameraSession` through the public HAL operations. The process-wide runtime
-shares one loaded backend across sessions while preserving per-session frame ownership and
+upper layers directly through the status-based public HAL operations. The HAL
+core owns lifecycle and frame-token protection, while the process-wide runtime
+shares one loaded backend across camera instances and preserves
 destroy-before-unload ordering. Phases 1 and 2 are implemented and
-owner-validated within their host scope. Stage 8.4 is **READY FOR OWNER FINAL
-VALIDATION**; a V4L2 backend, Buildroot integration, and target validation are
-not claimed by this checkpoint.
+owner-validated within their host scope. Stage 8.4 is **COMPLETE** within that
+documented host scope; Buildroot integration and target validation were not
+claimed by that checkpoint.
+
+Stage 8.5 implements Phase 1 of the V4L2 Camera HAL backend: opening an explicit
+device, validating capture and streaming capabilities, and enumerating discrete
+YUYV configurations. The active upper-layer model is the direct status-based
+Camera HAL API; `CameraSession` and `CameraError` are not part of the current
+architecture. V4L2 format application, MMAP, streaming, and frame delivery are
+Phase 2 work and are not implemented. The simulated backend is host validated;
+Buildroot and board validation for the current HAL/V4L2 backend remain deferred.
 
 C270 USB resets and inconsistent real throughput remain tracked as
 [STAGE7-USB-01](docs/validation/stage-07-gstreamer-integration.md). Stable
@@ -218,15 +233,13 @@ camera frames do not belong in this repository.
 | Stage 8.1 — camera service skeleton | **COMPLETE** |
 | Stage 8.2 — GStreamer Service Integration | **COMPLETE** |
 | Stage 8.3 — Camera PPI Core | **COMPLETE** |
-| Stage 8.4 — Camera HAL Architecture Refactor | **READY FOR OWNER FINAL VALIDATION** |
-| Stage 8.5 — Testing Foundation | **PLANNED** |
-| Stage 8.6 — V4L2 Camera HAL Backend | **PLANNED** |
-| Stage 8.7 — GStreamer `camstreamsrc` | **PLANNED** |
-| Stage 8.8 — Service Integration | **PLANNED** |
+| Stage 8.4 — Camera HAL Architecture Refactor | **COMPLETE — HOST SCOPE** |
+| Stage 8.5 — V4L2 Camera HAL Backend | **IN PROGRESS — PHASE 1 IMPLEMENTED** |
+| Stage 8.6 — GStreamer `camstreamsrc` | **PLANNED** |
+| Stage 8.7 — Service Integration | **PLANNED** |
 | Stage 9 — network camera streaming | **PLANNED** |
 
-Stages 6, 7, 8.0, 8.1, 8.2, and 8.3 are complete within their documented
-validation scopes. Stage 8.4 Phases 1 and 2 are implemented and
-owner-validated; the closure is ready for owner final validation. Future work
-must preserve the upstream UVC/V4L2 baseline and the evidence boundaries
-recorded above.
+Stages 6, 7, 8.0, 8.1, 8.2, 8.3, and 8.4 are complete within their documented
+validation scopes. Stage 8.5 Phase 1 is implemented; Phase 2, Buildroot
+integration, and board validation remain pending. Future work must preserve the
+upstream UVC/V4L2 baseline and the evidence boundaries recorded above.

@@ -24,6 +24,11 @@ target_compile_options(camstream-capture
         -Wpedantic
 )
 
+target_link_libraries(camstream-capture
+    PRIVATE
+        camstream::logging
+)
+
 install(TARGETS camstream-capture
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

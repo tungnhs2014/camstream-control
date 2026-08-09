@@ -3,7 +3,6 @@ find_package(Threads REQUIRED)
 add_library(camstream-camera-hal SHARED
     src/camera_backend_runtime.cpp
     src/camera_hal.cpp
-    src/camera_session.cpp
 )
 add_library(camstream::camera-hal ALIAS camstream-camera-hal)
 
@@ -30,6 +29,7 @@ target_compile_options(camstream-camera-hal
 
 target_link_libraries(camstream-camera-hal
     PRIVATE
+        camstream::logging
         ${CMAKE_DL_LIBS}
         Threads::Threads
 )

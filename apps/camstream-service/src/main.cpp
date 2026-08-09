@@ -1,5 +1,7 @@
 #include "camstream/camera_service.hpp"
 
+#include <camstream/logging.hpp>
+
 #include <charconv>
 #include <cstdint>
 #include <exception>
@@ -16,13 +18,7 @@ constexpr int kArgumentErrorExitCode = 2;
 
 struct ParsedArguments {
     camstream::GstreamerPipelineConfig config{
-        "/dev/video0",
-        camstream::GstreamerInputFormat::Yuy2,
-        640U,
-        480U,
-        30U,
-        0U,
-        false,
+        "/dev/video0", camstream::GstreamerInputFormat::Yuy2, 640U, 480U, 30U, 0U, false,
     };
 };
 
@@ -43,13 +39,13 @@ void print_usage(std::ostream& output, const char* program) {
 
 bool consume_value(int argc, char* argv[], int& index, const std::string& option, std::string& value) {
     if (index + 1 >= argc || std::string_view(argv[index + 1]).rfind("--", 0) == 0U) {
-        std::cerr << "Error: " << option << " requires a value\n";
+        LOGE(option << " requires a value");
         return false;
     }
 
     value = argv[++index];
     if (value.empty()) {
-        std::cerr << "Error: " << option << " value must not be empty\n";
+        LOGE(option << " value must not be empty");
         return false;
     }
     return true;
@@ -75,7 +71,7 @@ bool parse_gint(const std::string& text, bool allow_zero, std::uint32_t& value) 
 
 bool mark_once(bool& seen, const std::string& option) {
     if (seen) {
-        std::cerr << "Error: duplicate option " << option << '\n';
+        LOGE("duplicate option " << option);
         return false;
     }
     seen = true;
@@ -94,7 +90,7 @@ bool parse_arguments(int argc, char* argv[], ParsedArguments& parsed) {
     for (int index = 1; index < argc; ++index) {
         const std::string option = argv[index];
         if (option == "--help") {
-            std::cerr << "Error: --help must be used alone\n";
+            LOGE("--help must be used alone");
             return false;
         }
 
@@ -116,7 +112,7 @@ bool parse_arguments(int argc, char* argv[], ParsedArguments& parsed) {
             } else if (value == "mjpeg") {
                 parsed.config.input_format = camstream::GstreamerInputFormat::Mjpeg;
             } else {
-                std::cerr << "Error: invalid --format value '" << value << "'; expected yuy2 or mjpeg\n";
+                LOGE("invalid --format value '" << value << "'; expected yuy2 or mjpeg");
                 return false;
             }
             continue;
@@ -145,8 +141,8 @@ bool parse_arguments(int argc, char* argv[], ParsedArguments& parsed) {
                 return false;
             }
             if (!parse_gint(value, allow_zero, *destination)) {
-                std::cerr << "Error: invalid " << option << " value '" << value << "'; expected a "
-                          << (allow_zero ? "non-negative" : "positive") << " non-overflowing integer\n";
+                LOGE("invalid " << option << " value '" << value << "'; expected a "
+                                << (allow_zero ? "non-negative" : "positive") << " non-overflowing integer");
                 return false;
             }
             continue;
@@ -161,16 +157,16 @@ bool parse_arguments(int argc, char* argv[], ParsedArguments& parsed) {
             } else if (value == "false") {
                 parsed.config.sink_sync = false;
             } else {
-                std::cerr << "Error: invalid --sync value '" << value << "'; expected true or false\n";
+                LOGE("invalid --sync value '" << value << "'; expected true or false");
                 return false;
             }
             continue;
         }
 
         if (std::string_view(option).rfind("--", 0) == 0U) {
-            std::cerr << "Error: unknown option '" << option << "'\n";
+            LOGE("unknown option '" << option << "'");
         } else {
-            std::cerr << "Error: unexpected positional argument '" << option << "'\n";
+            LOGE("unexpected positional argument '" << option << "'");
         }
         return false;
     }
@@ -195,7 +191,7 @@ void print_startup_summary(const camstream::GstreamerPipelineConfig& config) {
 
 int run(ParsedArguments parsed) {
     print_startup_summary(parsed.config);
-    std::cout << "Camera service starting" << std::endl;
+    LOGI("Camera service starting");
 
     camstream::CameraService service(std::move(parsed.config));
     if (!service.initialize()) {
@@ -224,9 +220,9 @@ int main(int argc, char* argv[]) {
         }
         return run(std::move(parsed));
     } catch (const std::exception& exception) {
-        std::cerr << "Error: unexpected C++ failure: " << exception.what() << '\n';
+        LOGE("unexpected C++ failure: " << exception.what());
     } catch (...) {
-        std::cerr << "Error: unexpected non-standard C++ failure\n";
+        LOGE("unexpected non-standard C++ failure");
     }
 
     return kRuntimeErrorExitCode;

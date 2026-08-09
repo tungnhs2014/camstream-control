@@ -47,8 +47,7 @@ typedef camstream_camera_status_t (*camstream_camera_get_stream_configuration_v1
 
 /** @brief Applies a request and reports the backend's active configuration. */
 typedef camstream_camera_status_t (*camstream_camera_configure_v1_fn)(
-    camstream_camera_instance* instance,
-    const camstream_camera_stream_config_v1* requested,
+    camstream_camera_instance* instance, const camstream_camera_stream_config_v1* requested,
     camstream_camera_stream_config_v1* active);
 
 /** @brief Starts delivery for a configured instance. */
@@ -71,8 +70,7 @@ typedef camstream_camera_status_t (*camstream_camera_stop_v1_fn)(camstream_camer
 
 /** @brief Copies the last diagnostic into caller-owned bounded storage. */
 typedef camstream_camera_status_t (*camstream_camera_get_last_error_v1_fn)(camstream_camera_instance* instance,
-                                                                           char* buffer,
-                                                                           uint32_t buffer_size);
+                                                                           char* buffer, uint32_t buffer_size);
 
 /**
  * @brief Versioned operation table implemented by one Camera HAL backend.

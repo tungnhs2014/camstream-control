@@ -37,7 +37,7 @@ explicit ownership, and strict C ABI design. The project does **not** claim MISR
 
 | Identifier | Convention | Example |
 | --- | --- | --- |
-| Class, C++ struct, `enum class`, public C++ type | `PascalCase` | `CameraSession` |
+| Class, C++ struct, `enum class`, public C++ type | `PascalCase` | `CameraService` |
 | Function and method | `snake_case` | `release_frame()` |
 | Local variable | `snake_case` | `rollback_status` |
 | Function parameter | `snake_case` | `backend_module` |
