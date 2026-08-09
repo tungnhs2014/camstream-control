@@ -1,4 +1,4 @@
-#include <camstream/camera/camera_ppi.h>
+#include <camstream/camera/camera_backend.h>
 
 #include <array>
 #include <chrono>
@@ -507,12 +507,6 @@ const camstream_camera_backend_v1 kBackendDescriptor{
 
 } // namespace
 
-#if defined(__GNUC__)
-#define CAMSTREAM_CAMERA_BACKEND_EXPORT __attribute__((visibility("default")))
-#else
-#define CAMSTREAM_CAMERA_BACKEND_EXPORT
-#endif
-
-extern "C" CAMSTREAM_CAMERA_BACKEND_EXPORT const camstream_camera_backend_v1* camstream_camera_get_backend_v1(void) {
-    return &kBackendDescriptor;
+__attribute__((constructor)) static void register_simulated_backend() noexcept {
+    static_cast<void>(camstream_camera_hal_register_backend_v1(&kBackendDescriptor));
 }

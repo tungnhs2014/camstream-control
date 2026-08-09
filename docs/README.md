@@ -6,8 +6,8 @@ the validation reports rather than being repeated here.
 ## Architecture
 
 - [System overview](architecture/system-overview.md)
-- [Camera PPI design](architecture/camera-ppi-design.md)
-- [Stage 8.3 runtime flows](architecture/runtime-flows.md)
+- [Camera HAL design](architecture/camera-hal-design.md)
+- [Camera HAL runtime flows](architecture/runtime-flows.md)
 
 ## Development practices
 

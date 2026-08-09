@@ -51,8 +51,8 @@ Private C++ members do not use a trailing underscore or prefixes such as `m_`, `
 constructor or method parameter would collide with a member name, give the parameter a role-specific name:
 
 ```cpp
-explicit Impl(std::unique_ptr<CameraBackendModule> backend_module)
-    : module(std::move(backend_module)) {}
+explicit Impl(std::string module_path)
+    : backend_path(std::move(module_path)) {}
 ```
 
 Rename an identifier only when its role is genuinely unclear. Standard, locally clear domain abbreviations such as
@@ -104,8 +104,8 @@ retained.
 
 ### Names, comments, and public documentation
 
-- Use names that describe responsibility and layer. A Camera backend implements the Camera PPI; it is not a separate PPI
-  contract.
+- Use names that describe responsibility and layer. A Camera backend implements the Camera HAL backend SPI; it is not a
+  separate HAL contract.
 - Add concise Doxygen to public APIs and non-obvious ownership or lifecycle contracts.
 - Comments explain contracts, ownership, rationale, constraints, or non-obvious failure behavior.
 - Do not add comments that merely restate an assignment, branch, or function name.

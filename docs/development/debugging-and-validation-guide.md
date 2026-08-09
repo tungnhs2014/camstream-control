@@ -34,7 +34,7 @@ cmake -S . -B /tmp/camstream-build \
   -DCAMSTREAM_BUILD_CAPTURE=OFF \
   -DCAMSTREAM_BUILD_GST_TEST=OFF \
   -DCAMSTREAM_BUILD_SERVICE=OFF \
-  -DCAMSTREAM_BUILD_CAMERA_PPI=ON \
+  -DCAMSTREAM_BUILD_CAMERA_HAL=ON \
   -DCAMSTREAM_BUILD_CAMERA_BACKEND_SIMULATED=ON \
   -DCAMSTREAM_BUILD_CAMERA_TEST=ON
 cmake --build /tmp/camstream-build --parallel
@@ -64,7 +64,7 @@ cmake -S . -B /tmp/camstream-asan \
   -DCAMSTREAM_BUILD_CAPTURE=OFF \
   -DCAMSTREAM_BUILD_GST_TEST=OFF \
   -DCAMSTREAM_BUILD_SERVICE=OFF \
-  -DCAMSTREAM_BUILD_CAMERA_PPI=ON \
+  -DCAMSTREAM_BUILD_CAMERA_HAL=ON \
   -DCAMSTREAM_BUILD_CAMERA_BACKEND_SIMULATED=ON \
   -DCAMSTREAM_BUILD_CAMERA_TEST=ON
 cmake --build /tmp/camstream-asan
@@ -180,7 +180,7 @@ of a GStreamer, application, or driver root cause.
 KASAN mode.
 
 **When to use:** for risky kernel memory, videobuf2 ownership, workqueue, locking, or teardown changes in a dedicated
-debug kernel—not for ordinary userspace Camera PPI code.
+debug kernel—not for ordinary userspace Camera HAL code.
 
 **Example:**
 
@@ -201,7 +201,7 @@ transport.
 resolve.
 
 **When to use:** only in a controlled kernel-debug session with matching unstripped `vmlinux`, symbols, KGDB kernel
-configuration, and a dedicated transport. KGDB is for kernel debugging, not userspace Camera PPI code.
+configuration, and a dedicated transport. KGDB is for kernel debugging, not userspace Camera HAL code.
 
 **Example:**
 
