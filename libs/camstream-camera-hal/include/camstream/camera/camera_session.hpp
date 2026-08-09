@@ -1,7 +1,7 @@
 #ifndef CAMSTREAM_CAMERA_CAMERA_SESSION_HPP
 #define CAMSTREAM_CAMERA_CAMERA_SESSION_HPP
 
-#include <camstream/camera/camera_ppi.h>
+#include <camstream/camera/camera_hal.h>
 
 #include <array>
 #include <cstddef>
@@ -22,13 +22,13 @@ class CameraSessionIdentity;
 class CameraError final : public std::runtime_error {
   public:
     /**
-     * @brief Creates an error with its originating PPI status.
+     * @brief Creates an error with its originating HAL status.
      * @param message Complete diagnostic context suitable for logging.
      * @param originating_status C-compatible status returned by the failed operation.
      */
     CameraError(std::string message, camstream_camera_status_t originating_status);
 
-    /** @brief Returns the originating PPI status. */
+    /** @brief Returns the originating HAL status. */
     camstream_camera_status_t status() const noexcept;
 
   private:
@@ -135,26 +135,26 @@ class CameraFrame final {
 };
 
 /**
- * @brief Owns one dynamically loaded camera backend module and instance.
+ * @brief Owns one Camera HAL runtime reference and opaque camera instance.
  *
  * Valid order is load, open, query/configure, start, wait/acquire/release,
  * stop, and close. The object is single-threaded: callers must serialize every
- * operation and destruction. It is non-copyable and non-movable so its module,
- * opaque instance, lifecycle state, and outstanding frame tokens retain one
- * stable owner. The module remains loaded until all frames are released and the
- * backend instance is destroyed.
+ * operation and destruction. It is non-copyable and non-movable so its HAL
+ * instance, lifecycle state, and outstanding frame tokens retain one stable
+ * owner. The shared runtime remains loaded until every session instance is
+ * destroyed.
  *
  * Public operations throw CameraError for loader, lifecycle, or backend
- * failures. No C++ exception is allowed to cross the underlying C ABI.
+ * failures. No C++ exception is allowed to cross the backend C ABI.
  * Destruction never throws and performs best-effort release, stop, close,
  * instance destruction, and module unload in that order.
  */
 class CameraSession final {
   public:
     /**
-     * @brief Loads and validates a backend module, then creates one instance.
+     * @brief Acquires the constructor-registered backend, then creates one instance.
      * @param backend_path Explicit path passed to dlopen().
-     * @return A session owning the loaded module and opaque backend instance.
+     * @return A session owning one HAL runtime reference and opaque camera.
      * @throws CameraError on loader, descriptor, ABI, or create failure.
      */
     static CameraSession load(const std::string& backend_path);

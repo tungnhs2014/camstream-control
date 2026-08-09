@@ -156,7 +156,7 @@ int run_diagnostic(const CommandLine& command_line) {
 
     session.stop();
     session.close();
-    std::cout << "Camera PPI lifecycle: complete\n";
+    std::cout << "Camera HAL lifecycle: complete\n";
     return 0;
 }
 

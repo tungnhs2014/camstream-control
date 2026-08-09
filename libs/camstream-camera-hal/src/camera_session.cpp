@@ -1,7 +1,5 @@
 #include <camstream/camera/camera_session.hpp>
 
-#include "camera_backend_module.hpp"
-
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -20,6 +18,7 @@ class CameraSessionIdentity final {};
 namespace {
 
 constexpr std::size_t kDiagnosticBufferSize = 256U;
+constexpr std::size_t kBackendNameBufferSize = 128U;
 
 enum class SessionState {
     Created,
@@ -93,7 +92,7 @@ std::string bounded_source_identifier(const camstream_camera_stream_config_v1& c
     return std::string(config.source_identifier, length);
 }
 
-CameraStreamConfig from_ppi_config(const camstream_camera_stream_config_v1& config, const std::string& operation) {
+CameraStreamConfig from_hal_config(const camstream_camera_stream_config_v1& config, const std::string& operation) {
     validate_config_header(config, operation);
     CameraStreamConfig result;
     result.source_identifier = bounded_source_identifier(config, operation);
@@ -109,7 +108,7 @@ CameraStreamConfig from_ppi_config(const camstream_camera_stream_config_v1& conf
     return result;
 }
 
-camstream_camera_stream_config_v1 to_ppi_config(const CameraStreamConfig& config) {
+camstream_camera_stream_config_v1 to_hal_config(const CameraStreamConfig& config) {
     if (config.source_identifier.empty() || config.source_identifier.size() >= CAMSTREAM_CAMERA_MAX_SOURCE_ID_SIZE) {
         throw CameraError("Camera configure source identifier is empty or too long",
                           CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT);
@@ -133,7 +132,7 @@ camstream_camera_stream_config_v1 to_ppi_config(const CameraStreamConfig& config
     return result;
 }
 
-void validate_ppi_frame(const camstream_camera_frame_v1& frame) {
+void validate_hal_frame(const camstream_camera_frame_v1& frame) {
     if (frame.abi_version != CAMSTREAM_CAMERA_ABI_VERSION_V1 || frame.struct_size < sizeof(frame)) {
         throw_contract_error("acquire_frame", "invalid frame ABI header");
     }
@@ -156,8 +155,9 @@ void validate_ppi_frame(const camstream_camera_frame_v1& frame) {
 
 class CameraSession::Impl final {
   public:
-    explicit Impl(std::unique_ptr<CameraBackendModule> backend_module)
-        : module(std::move(backend_module)), owner_identity(std::make_shared<const detail::CameraSessionIdentity>()) {}
+    explicit Impl(std::string module_path)
+        : backend_path(std::move(module_path)),
+          owner_identity(std::make_shared<const detail::CameraSessionIdentity>()) {}
 
     ~Impl() noexcept {
         cleanup();
@@ -168,31 +168,25 @@ class CameraSession::Impl final {
     Impl(Impl&&) = delete;
     Impl& operator=(Impl&&) = delete;
 
-    const camstream_camera_backend_v1& backend() const noexcept {
-        return module->descriptor();
-    }
-
     std::string backend_diagnostic() const noexcept {
-        if (instance == nullptr) {
-            return {};
-        }
-
         std::array<char, kDiagnosticBufferSize> buffer{};
-        try {
-            const camstream_camera_status_t status =
-                backend().get_last_error(instance, buffer.data(), static_cast<std::uint32_t>(buffer.size()));
-            if (status == CAMSTREAM_CAMERA_STATUS_OK) {
-                buffer.back() = '\0';
-                return std::string(buffer.data());
-            }
-        } catch (...) {
+        const camstream_camera_status_t status = camera != nullptr
+                                                     ? camstream_camera_get_last_error(
+                                                           camera,
+                                                           buffer.data(),
+                                                           static_cast<std::uint32_t>(buffer.size()))
+                                                     : camstream_camera_hal_get_last_error(
+                                                           buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+        if (status == CAMSTREAM_CAMERA_STATUS_OK) {
+            buffer.back() = '\0';
+            return std::string(buffer.data());
         }
         return {};
     }
 
     std::string backend_failure_message(const std::string& operation, camstream_camera_status_t status) const {
         std::ostringstream message;
-        message << "Camera backend '" << module->backend_name() << "' (" << module->path() << ") operation "
+        message << "Camera backend '" << validated_backend_name << "' (" << backend_path << ") operation "
                 << operation << " failed with status " << status;
         const std::string diagnostic = backend_diagnostic();
         if (!diagnostic.empty()) {
@@ -221,19 +215,16 @@ class CameraSession::Impl final {
         }
     }
 
-    camstream_camera_status_t release_token_noexcept(std::uint64_t token, bool& callback_threw) noexcept {
-        callback_threw = false;
+    camstream_camera_status_t release_token_noexcept(std::uint64_t token) noexcept {
         try {
-            return backend().release_frame(instance, token);
+            return camstream_camera_release_frame(camera, token);
         } catch (...) {
-            callback_threw = true;
             return CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR;
         }
     }
 
     void rollback_acquired_token(std::uint64_t token, const char* original_failure) {
-        bool callback_threw = false;
-        const camstream_camera_status_t rollback_status = release_token_noexcept(token, callback_threw);
+        const camstream_camera_status_t rollback_status = release_token_noexcept(token);
         if (rollback_status == CAMSTREAM_CAMERA_STATUS_OK) {
             return;
         }
@@ -242,11 +233,7 @@ class CameraSession::Impl final {
         std::ostringstream message;
         message << "Camera acquire_frame failed after backend acquisition: " << original_failure
                 << "; rollback release_frame failed for token " << token;
-        if (callback_threw) {
-            message << " because the backend callback crossed the C ABI with an exception";
-        } else {
-            message << "; " << backend_failure_message("acquire_frame rollback release_frame", rollback_status);
-        }
+        message << "; " << backend_failure_message("acquire_frame rollback release_frame", rollback_status);
         throw CameraError(message.str(), rollback_status);
     }
 
@@ -255,74 +242,65 @@ class CameraSession::Impl final {
             return;
         }
 
-        bool callback_threw = false;
-        const camstream_camera_status_t status = release_token_noexcept(*pending_cleanup_token, callback_threw);
+        const camstream_camera_status_t status = release_token_noexcept(*pending_cleanup_token);
         if (status != CAMSTREAM_CAMERA_STATUS_OK) {
-            if (callback_threw) {
-                throw CameraError("Camera operation " + operation +
-                                      " could not resolve pending frame cleanup because release_frame crossed the "
-                                      "C ABI with an exception",
-                                  CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR);
-            }
             throw_backend_failure(operation + " pending cleanup release_frame", status);
         }
         pending_cleanup_token.reset();
     }
 
     void cleanup() noexcept {
-        if (module == nullptr || instance == nullptr) {
-            return;
-        }
-
-        if (pending_cleanup_token.has_value()) {
-            bool callback_threw = false;
-            const camstream_camera_status_t status = release_token_noexcept(*pending_cleanup_token, callback_threw);
+        if (camera != nullptr && pending_cleanup_token.has_value()) {
+            const camstream_camera_status_t status = release_token_noexcept(*pending_cleanup_token);
             if (status == CAMSTREAM_CAMERA_STATUS_OK) {
                 pending_cleanup_token.reset();
             } else {
                 std::cerr << "Error: camera pending frame cleanup failed with status " << status;
-                if (callback_threw) {
-                    std::cerr << " after release_frame crossed the C ABI with an exception";
-                }
                 std::cerr << '\n';
             }
         }
 
-        for (auto token = outstanding_tokens.rbegin(); token != outstanding_tokens.rend(); ++token) {
-            try {
-                static_cast<void>(backend().release_frame(instance, *token));
-            } catch (...) {
+        if (camera != nullptr) {
+            for (auto token = outstanding_tokens.rbegin(); token != outstanding_tokens.rend(); ++token) {
+                static_cast<void>(camstream_camera_release_frame(camera, *token));
             }
-        }
-        outstanding_tokens.clear();
+            outstanding_tokens.clear();
 
-        if (state == SessionState::Started) {
-            try {
-                static_cast<void>(backend().stop(instance));
-            } catch (...) {
+            if (state == SessionState::Started) {
+                static_cast<void>(camstream_camera_stop(camera));
+                state = SessionState::Stopped;
             }
-            state = SessionState::Stopped;
-        }
-        if (state == SessionState::Configured || state == SessionState::Open || state == SessionState::Stopped) {
-            try {
-                static_cast<void>(backend().close(instance));
-            } catch (...) {
+            if (state == SessionState::Configured || state == SessionState::Open || state == SessionState::Stopped) {
+                static_cast<void>(camstream_camera_close(camera));
+                state = SessionState::Created;
             }
-            state = SessionState::Created;
+
+            camstream_camera_destroy(camera);
+            camera = nullptr;
         }
 
-        try {
-            backend().destroy(instance);
-        } catch (...) {
-            std::cerr << "Error: camera backend destroy crossed the C ABI with "
-                         "an exception\n";
+        if (backend_loaded) {
+            const camstream_camera_status_t status = camstream_camera_hal_unload_backend();
+            if (status != CAMSTREAM_CAMERA_STATUS_OK) {
+                std::array<char, kDiagnosticBufferSize> buffer{};
+                static_cast<void>(camstream_camera_hal_get_last_error(
+                    buffer.data(), static_cast<std::uint32_t>(buffer.size())));
+                std::cerr << "Error: Camera HAL backend unload failed with status " << status;
+                if (buffer[0] != '\0') {
+                    std::cerr << ": " << buffer.data();
+                }
+                std::cerr << '\n';
+            }
+            backend_loaded = false;
         }
-        instance = nullptr;
     }
 
-    std::unique_ptr<CameraBackendModule> module;
+    std::string backend_path;
+    std::string validated_backend_name;
     std::shared_ptr<const detail::CameraSessionIdentity> owner_identity;
-    camstream_camera_instance* instance = nullptr;
+    camstream_camera* camera = nullptr;
+    std::uint32_t validated_backend_abi_version = 0U;
+    bool backend_loaded = false;
     SessionState state = SessionState::Created;
     std::vector<std::uint64_t> outstanding_tokens;
     std::optional<std::uint64_t> pending_cleanup_token;
@@ -399,23 +377,41 @@ CameraSession::CameraSession(std::unique_ptr<Impl> session_implementation) noexc
     : implementation(std::move(session_implementation)) {}
 
 CameraSession CameraSession::load(const std::string& backend_path) {
-    auto session_implementation = std::make_unique<Impl>(CameraBackendModule::load(backend_path));
-
-    camstream_camera_instance* instance = nullptr;
-    camstream_camera_status_t status = CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR;
-    try {
-        status = session_implementation->backend().create(&instance);
-    } catch (...) {
-        throw CameraError("Camera backend create crossed the C ABI with an "
-                          "exception: " +
-                              backend_path,
-                          CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR);
+    auto session_implementation = std::make_unique<Impl>(backend_path);
+    const camstream_camera_status_t load_status = camstream_camera_hal_load_backend(backend_path.c_str());
+    if (load_status != CAMSTREAM_CAMERA_STATUS_OK) {
+        std::array<char, kDiagnosticBufferSize> buffer{};
+        static_cast<void>(
+            camstream_camera_hal_get_last_error(buffer.data(), static_cast<std::uint32_t>(buffer.size())));
+        std::ostringstream message;
+        message << "Camera HAL backend loader failure for '" << backend_path << "' with status " << load_status;
+        if (buffer[0] != '\0') {
+            message << ": " << buffer.data();
+        }
+        throw CameraError(message.str(), load_status);
     }
+    session_implementation->backend_loaded = true;
 
-    session_implementation->instance = instance;
-    if (status != CAMSTREAM_CAMERA_STATUS_OK || instance == nullptr) {
+    const camstream_camera_status_t create_status = camstream_camera_create(&session_implementation->camera);
+    if (session_implementation->camera != nullptr) {
+        std::array<char, kBackendNameBufferSize> backend_name{};
+        const camstream_camera_status_t name_status = camstream_camera_get_backend_name(
+            session_implementation->camera, backend_name.data(), static_cast<std::uint32_t>(backend_name.size()));
+        const camstream_camera_status_t abi_status = camstream_camera_get_backend_abi_version(
+            session_implementation->camera, &session_implementation->validated_backend_abi_version);
+        if (name_status != CAMSTREAM_CAMERA_STATUS_OK || abi_status != CAMSTREAM_CAMERA_STATUS_OK) {
+            throw CameraError("Camera HAL could not read validated backend metadata",
+                              CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR);
+        }
+        session_implementation->validated_backend_name = backend_name.data();
+    }
+    if (create_status != CAMSTREAM_CAMERA_STATUS_OK || session_implementation->camera == nullptr) {
+        if (session_implementation->validated_backend_name.empty()) {
+            session_implementation->validated_backend_name = "unknown";
+        }
         session_implementation->throw_backend_failure(
-            "create", status != CAMSTREAM_CAMERA_STATUS_OK ? status : CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR);
+            "create",
+            create_status != CAMSTREAM_CAMERA_STATUS_OK ? create_status : CAMSTREAM_CAMERA_STATUS_INTERNAL_ERROR);
     }
     return CameraSession(std::move(session_implementation));
 }
@@ -423,11 +419,11 @@ CameraSession CameraSession::load(const std::string& backend_path) {
 CameraSession::~CameraSession() noexcept = default;
 
 const std::string& CameraSession::backend_name() const noexcept {
-    return implementation->module->backend_name();
+    return implementation->validated_backend_name;
 }
 
 std::uint32_t CameraSession::backend_abi_version() const noexcept {
-    return implementation->backend().abi_version;
+    return implementation->validated_backend_abi_version;
 }
 
 void CameraSession::open(const std::string& source_identifier) {
@@ -437,7 +433,7 @@ void CameraSession::open(const std::string& source_identifier) {
     }
 
     const camstream_camera_status_t status =
-        implementation->backend().open(implementation->instance, source_identifier.c_str());
+        camstream_camera_open(implementation->camera, source_identifier.c_str());
     if (status != CAMSTREAM_CAMERA_STATUS_OK) {
         implementation->throw_backend_failure("open", status);
     }
@@ -451,8 +447,7 @@ CameraCapabilities CameraSession::capabilities() const {
 
     camstream_camera_capabilities_v1 capabilities{};
     initialize_capabilities(capabilities);
-    const camstream_camera_status_t status =
-        implementation->backend().get_capabilities(implementation->instance, &capabilities);
+    const camstream_camera_status_t status = camstream_camera_get_capabilities(implementation->camera, &capabilities);
     if (status != CAMSTREAM_CAMERA_STATUS_OK) {
         implementation->throw_backend_failure("get_capabilities", status);
     }
@@ -470,31 +465,30 @@ CameraStreamConfig CameraSession::stream_configuration(std::uint32_t index) cons
     camstream_camera_stream_config_v1 configuration{};
     initialize_config(configuration);
     const camstream_camera_status_t status =
-        implementation->backend().get_stream_configuration(implementation->instance, index, &configuration);
+        camstream_camera_get_stream_configuration(implementation->camera, index, &configuration);
     if (status != CAMSTREAM_CAMERA_STATUS_OK) {
         implementation->throw_backend_failure("get_stream_configuration", status);
     }
-    return from_ppi_config(configuration, "get_stream_configuration");
+    return from_hal_config(configuration, "get_stream_configuration");
 }
 
 CameraStreamConfig CameraSession::configure(const CameraStreamConfig& requested) {
     implementation->require_state(SessionState::Open, "configure");
-    const camstream_camera_stream_config_v1 request = to_ppi_config(requested);
+    const camstream_camera_stream_config_v1 request = to_hal_config(requested);
     camstream_camera_stream_config_v1 active{};
     initialize_config(active);
-    const camstream_camera_status_t status =
-        implementation->backend().configure(implementation->instance, &request, &active);
+    const camstream_camera_status_t status = camstream_camera_configure(implementation->camera, &request, &active);
     if (status != CAMSTREAM_CAMERA_STATUS_OK) {
         implementation->throw_backend_failure("configure", status);
     }
-    CameraStreamConfig result = from_ppi_config(active, "configure");
+    CameraStreamConfig result = from_hal_config(active, "configure");
     implementation->state = SessionState::Configured;
     return result;
 }
 
 void CameraSession::start() {
     implementation->require_state(SessionState::Configured, "start");
-    const camstream_camera_status_t status = implementation->backend().start(implementation->instance);
+    const camstream_camera_status_t status = camstream_camera_start(implementation->camera);
     if (status != CAMSTREAM_CAMERA_STATUS_OK) {
         implementation->throw_backend_failure("start", status);
     }
@@ -504,7 +498,7 @@ void CameraSession::start() {
 bool CameraSession::wait_frame(std::uint32_t timeout_ms) {
     implementation->require_state(SessionState::Started, "wait_frame");
     implementation->require_no_pending_cleanup("wait_frame");
-    const camstream_camera_status_t status = implementation->backend().wait_frame(implementation->instance, timeout_ms);
+    const camstream_camera_status_t status = camstream_camera_wait_frame(implementation->camera, timeout_ms);
     if (status == CAMSTREAM_CAMERA_STATUS_TIMEOUT) {
         return false;
     }
@@ -519,13 +513,13 @@ CameraFrame CameraSession::acquire_frame() {
     implementation->require_no_pending_cleanup("acquire_frame");
     camstream_camera_frame_v1 frame{};
     initialize_frame(frame);
-    const camstream_camera_status_t status = implementation->backend().acquire_frame(implementation->instance, &frame);
+    const camstream_camera_status_t status = camstream_camera_acquire_frame(implementation->camera, &frame);
     if (status != CAMSTREAM_CAMERA_STATUS_OK) {
         implementation->throw_backend_failure("acquire_frame", status);
     }
 
     try {
-        validate_ppi_frame(frame);
+        validate_hal_frame(frame);
         const auto duplicate = std::find(
             implementation->outstanding_tokens.begin(), implementation->outstanding_tokens.end(), frame.frame_token);
         if (duplicate != implementation->outstanding_tokens.end()) {
@@ -562,8 +556,7 @@ void CameraSession::release_frame(CameraFrame& frame) {
         throw CameraError("Camera frame does not belong to this session", CAMSTREAM_CAMERA_STATUS_INVALID_ARGUMENT);
     }
 
-    const camstream_camera_status_t status =
-        implementation->backend().release_frame(implementation->instance, frame.frame_token);
+    const camstream_camera_status_t status = camstream_camera_release_frame(implementation->camera, frame.frame_token);
     if (status != CAMSTREAM_CAMERA_STATUS_OK) {
         implementation->throw_backend_failure("release_frame", status);
     }
@@ -581,7 +574,7 @@ void CameraSession::stop() {
         throw CameraError("Camera stop requires all frames to be released", CAMSTREAM_CAMERA_STATUS_INVALID_STATE);
     }
 
-    const camstream_camera_status_t status = implementation->backend().stop(implementation->instance);
+    const camstream_camera_status_t status = camstream_camera_stop(implementation->camera);
     if (status != CAMSTREAM_CAMERA_STATUS_OK) {
         implementation->throw_backend_failure("stop", status);
     }
@@ -603,7 +596,7 @@ void CameraSession::close() {
         throw CameraError("Camera close requires all frames to be released", CAMSTREAM_CAMERA_STATUS_INVALID_STATE);
     }
 
-    const camstream_camera_status_t status = implementation->backend().close(implementation->instance);
+    const camstream_camera_status_t status = camstream_camera_close(implementation->camera);
     if (status != CAMSTREAM_CAMERA_STATUS_OK) {
         implementation->throw_backend_failure("close", status);
     }

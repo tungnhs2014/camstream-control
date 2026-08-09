@@ -19,7 +19,7 @@ target_compile_options(camstream-camera-test
 
 target_link_libraries(camstream-camera-test
     PRIVATE
-        camstream::camera-ppi
+        camstream::camera-hal
 )
 
 install(TARGETS camstream-camera-test
